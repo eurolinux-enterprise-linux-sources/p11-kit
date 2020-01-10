@@ -1,6 +1,6 @@
 Name:           p11-kit
 Version:        0.18.5
-Release:        2%{?dist}
+Release:        2%{?dist}.2
 Summary:        Library for loading and sharing PKCS#11 modules
 
 License:        BSD
@@ -33,6 +33,7 @@ Summary:        System trust module from %{name}
 Requires:       %{name}%{?_isa} = %{version}-%{release}
 Requires:       %{_sbindir}/update-alternatives
 Requires(post):   %{_sbindir}/update-alternatives
+Requires(post):   /bin/grep
 Requires(postun): %{_sbindir}/update-alternatives
 Conflicts:      nss < 3.14.3-33
 
@@ -126,6 +127,12 @@ fi
 %{_libdir}/p11-kit/p11-kit-redhat-setup-trust
 
 %changelog
+* Thu Jan 16 2014 Stef Walter <stefw@redhat.com> - 0.18.5-2.2
+- Fix path for grep (#1039930)
+
+* Tue Jan 07 2014 Stef Walter <stefw@redhat.com> - 0.18.5-2.1
+- Add missing dependency on grep (#1039930)
+
 * Thu Jul 18 2013 Stef Walter <stefw@redhat.com> - 0.18.5-2
 - Fix problem with multilib conflicts (generated docbook ids)
 
