@@ -1,0 +1,117 @@
+From 027c5cc1a0fd71675f4cf7d3e6b681a2a9454425 Mon Sep 17 00:00:00 2001
+From: Stef Walter <stef@thewalter.net>
+Date: Thu, 18 Jul 2013 17:14:42 +0200
+Subject: [PATCH] doc: Add identifiers to doc sections so gtk-doc doesn't
+ autogen them
+
+---
+ doc/manual/p11-kit-config.xml |  2 +-
+ doc/manual/p11-kit.xml        | 12 ++++++------
+ doc/manual/pkcs11.conf.xml    |  6 +++---
+ 3 files changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/doc/manual/p11-kit-config.xml b/doc/manual/p11-kit-config.xml
+index ec17b1b..b00d56c 100644
+--- a/doc/manual/p11-kit-config.xml
++++ b/doc/manual/p11-kit-config.xml
+@@ -80,7 +80,7 @@ critical: yes
+ 
+ </section>
+ 
+-<section>
++<section id="config-files">
+ 	<title>Configuration Files</title>
+ 
+ 	<para>A complete configuration consists of several files. These files are
+diff --git a/doc/manual/p11-kit.xml b/doc/manual/p11-kit.xml
+index b51022f..325f5db 100644
+--- a/doc/manual/p11-kit.xml
++++ b/doc/manual/p11-kit.xml
+@@ -38,7 +38,7 @@
+ 	</cmdsynopsis>
+ </refsynopsisdiv>
+ 
+-<refsect1>
++<refsect1 id="p11-kit-description">
+ 	<title>Description</title>
+ 	<para><command>p11-kit</command> is a command line tool that
+ 	can be used to perform operations on PKCS#11 modules configured on the
+@@ -62,7 +62,7 @@
+ 
+ </refsect1>
+ 
+-<refsect1>
++<refsect1 id="p11-kit-list-modules">
+ 	<title>List Modules</title>
+ 
+ 	<para>List system configured PKCS#11 modules.</para>
+@@ -76,7 +76,7 @@ $ p11-kit list-modules
+ 
+ </refsect1>
+ 
+-<refsect1>
++<refsect1 id="p11-kit-extract">
+ 	<title>Extract</title>
+ 
+ 	<para>Extract certificates from configured PKCS#11 modules.</para>
+@@ -205,7 +205,7 @@ $ p11-kit extract --format=x509-directory --filter=ca-anchors /path/to/directory
+ 
+ </refsect1>
+ 
+-<refsect1>
++<refsect1 id="p11-kit-extract-trust">
+ 	<title>Extract Trust</title>
+ 
+ 	<para>Extract standard trust information files.</para>
+@@ -224,7 +224,7 @@ $ p11-kit extract-trust
+ 
+ </refsect1>
+ 
+-<refsect1>
++<refsect1 id="p11-kit-extract-bugs">
+   <title>Bugs</title>
+   <para>
+     Please send bug reports to either the distribution bug tracker
+@@ -233,7 +233,7 @@ $ p11-kit extract-trust
+   </para>
+ </refsect1>
+ 
+-<refsect1>
++<refsect1 id="p11-kit-extract-see-also">
+   <title>See also</title>
+     <simplelist type="inline">
+         <member><citerefentry><refentrytitle>pkcs11.conf</refentrytitle><manvolnum>5</manvolnum></citerefentry></member>
+diff --git a/doc/manual/pkcs11.conf.xml b/doc/manual/pkcs11.conf.xml
+index f4be2ff..2ee4a68 100644
+--- a/doc/manual/pkcs11.conf.xml
++++ b/doc/manual/pkcs11.conf.xml
+@@ -6,7 +6,7 @@
+   <!ENTITY userdir SYSTEM "userdir.xml">
+ ]>
+ 
+-<refentry id="pkcs11.conf">
++<refentry id="pkcs11-conf">
+ 
+ <refentryinfo>
+ 	<title>pkcs11.conf</title>
+@@ -32,7 +32,7 @@
+ 	<refpurpose>Configuration files for PKCS#11 modules</refpurpose>
+ </refnamediv>
+ 
+-<refsect1>
++<refsect1 id="pkcs11-conf-description">
+ 	<title>Description</title>
+ 	<para>The <command>pkcs11.conf</command> configuration files are a standard
+ 	way to configure PKCS#11 modules.</para>
+@@ -211,7 +211,7 @@ x-custom : text
+ 	<literal>pkg-config</literal>.</para>
+ </refsect1>
+ 
+-<refsect1>
++<refsect1 id="pkcs11-conf-see-also">
+ 	<title>See also</title>
+ 	<simplelist type="inline">
+ 		<member><citerefentry><refentrytitle>p11-kit</refentrytitle><manvolnum>8</manvolnum></citerefentry></member>
+-- 
+1.8.3.1
+
