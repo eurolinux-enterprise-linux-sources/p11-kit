@@ -38,22 +38,24 @@
 #include "array.h"
 #include "compat.h"
 #include "pkcs11.h"
-
-/*
- * A boolean value which denotes whether we auto generated
- * this object, as opposed to coming from outside the builder.
- *
- * We set this on all objects. It will always be either CK_TRUE
- * or CK_FALSE for all objects built by this builder.
- */
-#define CKA_X_GENERATED (CKA_X_VENDOR + 8000)
+#include "types.h"
 
 typedef struct _p11_index p11_index;
 
 typedef CK_RV   (* p11_index_build_cb)   (void *data,
                                           p11_index *index,
-                                          CK_ATTRIBUTE **attrs,
-                                          CK_ATTRIBUTE *merge);
+                                          CK_ATTRIBUTE *attrs,
+                                          CK_ATTRIBUTE *merge,
+                                          CK_ATTRIBUTE **populate);
+
+typedef CK_RV   (* p11_index_store_cb)   (void *data,
+                                          p11_index *index,
+                                          CK_OBJECT_HANDLE handle,
+                                          CK_ATTRIBUTE **attrs);
+
+typedef CK_RV   (* p11_index_remove_cb)  (void *data,
+                                          p11_index *index,
+                                          CK_ATTRIBUTE *attrs);
 
 typedef void    (* p11_index_notify_cb)  (void *data,
                                           p11_index *index,
@@ -61,6 +63,8 @@ typedef void    (* p11_index_notify_cb)  (void *data,
                                           CK_ATTRIBUTE *attrs);
 
 p11_index *        p11_index_new         (p11_index_build_cb build,
+                                          p11_index_store_cb store,
+                                          p11_index_remove_cb remove,
                                           p11_index_notify_cb notify,
                                           void *data);
 
@@ -68,11 +72,11 @@ void               p11_index_free        (p11_index *index);
 
 int                p11_index_size        (p11_index *index);
 
-void               p11_index_batch       (p11_index *index);
+void               p11_index_load        (p11_index *index);
 
 void               p11_index_finish      (p11_index *index);
 
-bool               p11_index_in_batch    (p11_index *index);
+bool               p11_index_loading     (p11_index *index);
 
 CK_RV              p11_index_take        (p11_index *index,
                                           CK_ATTRIBUTE *attrs,

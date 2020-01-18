@@ -42,6 +42,7 @@
 enum                <a class="link" href="p11-kit-URIs.html#P11KitUriType" title="enum P11KitUriType">P11KitUriType</a>;
 enum                <a class="link" href="p11-kit-URIs.html#P11KitUriResult" title="enum P11KitUriResult">P11KitUriResult</a>;
 typedef             <a class="link" href="p11-kit-URIs.html#P11KitUri" title="P11KitUri">P11KitUri</a>;
+typedef             <a class="link" href="p11-kit-URIs.html#p11-kit-uri" title="p11_kit_uri">p11_kit_uri</a>;
 <a class="link" href="p11-kit-URIs.html#P11KitUri" title="P11KitUri"><span class="returnvalue">P11KitUri</span></a> *         <a class="link" href="p11-kit-URIs.html#p11-kit-uri-new" title="p11_kit_uri_new ()">p11_kit_uri_new</a>                     (<em class="parameter"><code><span class="type">void</span></code></em>);
 <span class="returnvalue">CK_INFO_PTR</span>         <a class="link" href="p11-kit-URIs.html#p11-kit-uri-get-module-info" title="p11_kit_uri_get_module_info ()">p11_kit_uri_get_module_info</a>         (<em class="parameter"><code><a class="link" href="p11-kit-URIs.html#P11KitUri" title="P11KitUri"><span class="type">P11KitUri</span></a> *uri</code></em>);
 <span class="returnvalue">int</span>                 <a class="link" href="p11-kit-URIs.html#p11-kit-uri-match-module-info" title="p11_kit_uri_match_module_info ()">p11_kit_uri_match_module_info</a>       (<em class="parameter"><code><a class="link" href="p11-kit-URIs.html#P11KitUri" title="P11KitUri"><span class="type">P11KitUri</span></a> *uri</code></em>,
@@ -278,6 +279,12 @@ which error codes they are capable of returning.
 A structure representing a PKCS#11 URI. There are no public fields
 visible in this structure. Use the various accessor functions.
 </p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="p11-kit-uri"></a><h3>p11_kit_uri</h3>
+<pre class="programlisting">typedef struct p11_kit_uri p11_kit_uri;
+</pre>
 </div>
 <hr>
 <div class="refsect2">

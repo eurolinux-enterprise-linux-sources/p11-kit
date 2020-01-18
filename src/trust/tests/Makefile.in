@@ -15,6 +15,7 @@
 @SET_MAKE@
 
 
+
 VPATH = @srcdir@
 am__is_gnu_make = test -n '$(MAKEFILE_LIST)' && test -n '$(MAKELEVEL)'
 am__make_running_with_option = \
@@ -80,9 +81,12 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 DIST_COMMON = $(top_srcdir)/build/Makefile.tests $(srcdir)/Makefile.in \
-	$(srcdir)/Makefile.am $(top_srcdir)/depcomp
+	$(srcdir)/Makefile.am $(srcdir)/test-extract.in \
+	$(top_srcdir)/build/litter/depcomp
 noinst_PROGRAMS = frob-pow$(EXEEXT) frob-token$(EXEEXT) \
-	frob-nss-trust$(EXEEXT) $(am__EXEEXT_2)
+	frob-nss-trust$(EXEEXT) frob-cert$(EXEEXT) frob-bc$(EXEEXT) \
+	frob-ku$(EXEEXT) frob-eku$(EXEEXT) frob-ext$(EXEEXT) \
+	frob-cert$(EXEEXT) frob-oid$(EXEEXT) $(am__EXEEXT_2)
 TESTS = $(am__EXEEXT_2)
 subdir = trust/tests
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
@@ -102,101 +106,328 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/config.h
-CONFIG_CLEAN_FILES =
+CONFIG_CLEAN_FILES = test-extract
 CONFIG_CLEAN_VPATH_FILES =
 LTLIBRARIES = $(noinst_LTLIBRARIES)
-libtestdata_la_LIBADD =
-am_libtestdata_la_OBJECTS = test-data.lo
-libtestdata_la_OBJECTS = $(am_libtestdata_la_OBJECTS)
+libtrust_test_la_LIBADD =
+am_libtrust_test_la_OBJECTS = test-trust.lo digest.lo
+libtrust_test_la_OBJECTS = $(am_libtrust_test_la_OBJECTS)
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
 am__v_lt_0 = --silent
 am__v_lt_1 = 
 am__EXEEXT_1 =
-am__EXEEXT_2 = test-persist$(EXEEXT) test-index$(EXEEXT) \
-	test-parser$(EXEEXT) test-builder$(EXEEXT) test-token$(EXEEXT) \
-	test-module$(EXEEXT) $(am__EXEEXT_1)
+am__EXEEXT_2 = test-digest$(EXEEXT) test-asn1$(EXEEXT) \
+	test-base64$(EXEEXT) test-pem$(EXEEXT) test-oid$(EXEEXT) \
+	test-utf8$(EXEEXT) test-x509$(EXEEXT) test-persist$(EXEEXT) \
+	test-index$(EXEEXT) test-parser$(EXEEXT) test-builder$(EXEEXT) \
+	test-token$(EXEEXT) test-module$(EXEEXT) test-save$(EXEEXT) \
+	test-enumerate$(EXEEXT) test-cer$(EXEEXT) test-bundle$(EXEEXT) \
+	test-openssl$(EXEEXT) $(am__EXEEXT_1)
 PROGRAMS = $(noinst_PROGRAMS)
+frob_bc_SOURCES = frob-bc.c
+frob_bc_OBJECTS = frob-bc.$(OBJEXT)
+frob_bc_LDADD = $(LDADD)
+am__DEPENDENCIES_1 =
+frob_bc_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+frob_cert_SOURCES = frob-cert.c
+frob_cert_OBJECTS = frob-cert.$(OBJEXT)
+frob_cert_LDADD = $(LDADD)
+frob_cert_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+frob_eku_SOURCES = frob-eku.c
+frob_eku_OBJECTS = frob-eku.$(OBJEXT)
+frob_eku_LDADD = $(LDADD)
+frob_eku_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+frob_ext_SOURCES = frob-ext.c
+frob_ext_OBJECTS = frob-ext.$(OBJEXT)
+frob_ext_LDADD = $(LDADD)
+frob_ext_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+frob_ku_SOURCES = frob-ku.c
+frob_ku_OBJECTS = frob-ku.$(OBJEXT)
+frob_ku_LDADD = $(LDADD)
+frob_ku_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 frob_nss_trust_SOURCES = frob-nss-trust.c
 frob_nss_trust_OBJECTS = frob-nss-trust.$(OBJEXT)
-am__DEPENDENCIES_1 =
 frob_nss_trust_DEPENDENCIES = $(top_builddir)/common/libp11-common.la \
 	$(top_builddir)/p11-kit/libp11-kit.la $(am__DEPENDENCIES_1) \
 	$(am__DEPENDENCIES_1)
+frob_oid_SOURCES = frob-oid.c
+frob_oid_OBJECTS = frob-oid.$(OBJEXT)
+frob_oid_LDADD = $(LDADD)
+frob_oid_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 frob_pow_SOURCES = frob-pow.c
 frob_pow_OBJECTS = frob-pow.$(OBJEXT)
 frob_pow_LDADD = $(LDADD)
 frob_pow_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
-	$(top_builddir)/common/libp11-data.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
 	$(top_builddir)/common/libp11-library.la \
-	$(top_builddir)/common/libp11-common.la \
-	$(builddir)/libtestdata.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS) $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 frob_token_SOURCES = frob-token.c
 frob_token_OBJECTS = frob-token.$(OBJEXT)
 frob_token_LDADD = $(LDADD)
 frob_token_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
-	$(top_builddir)/common/libp11-data.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
 	$(top_builddir)/common/libp11-library.la \
-	$(top_builddir)/common/libp11-common.la \
-	$(builddir)/libtestdata.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS) $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+test_asn1_SOURCES = test-asn1.c
+test_asn1_OBJECTS = test-asn1.$(OBJEXT)
+test_asn1_LDADD = $(LDADD)
+test_asn1_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+test_base64_SOURCES = test-base64.c
+test_base64_OBJECTS = test-base64.$(OBJEXT)
+test_base64_LDADD = $(LDADD)
+test_base64_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 test_builder_SOURCES = test-builder.c
 test_builder_OBJECTS = test-builder.$(OBJEXT)
 test_builder_LDADD = $(LDADD)
 test_builder_DEPENDENCIES =  \
 	$(top_builddir)/trust/libtrust-testable.la \
-	$(top_builddir)/common/libp11-data.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
 	$(top_builddir)/common/libp11-library.la \
-	$(top_builddir)/common/libp11-common.la \
-	$(builddir)/libtestdata.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS) $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+am__objects_1 =
+am_test_bundle_OBJECTS = test-bundle.$(OBJEXT) enumerate.$(OBJEXT) \
+	extract-pem.$(OBJEXT) save.$(OBJEXT) $(am__objects_1)
+test_bundle_OBJECTS = $(am_test_bundle_OBJECTS)
+test_bundle_LDADD = $(LDADD)
+test_bundle_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+am_test_cer_OBJECTS = test-cer.$(OBJEXT) enumerate.$(OBJEXT) \
+	extract-cer.$(OBJEXT) save.$(OBJEXT) $(am__objects_1)
+test_cer_OBJECTS = $(am_test_cer_OBJECTS)
+test_cer_LDADD = $(LDADD)
+test_cer_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+test_digest_SOURCES = test-digest.c
+test_digest_OBJECTS = test-digest.$(OBJEXT)
+test_digest_LDADD = $(LDADD)
+test_digest_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+am_test_enumerate_OBJECTS = test-enumerate.$(OBJEXT) \
+	enumerate.$(OBJEXT) $(am__objects_1)
+test_enumerate_OBJECTS = $(am_test_enumerate_OBJECTS)
+test_enumerate_LDADD = $(LDADD)
+test_enumerate_DEPENDENCIES =  \
+	$(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 test_index_SOURCES = test-index.c
 test_index_OBJECTS = test-index.$(OBJEXT)
 test_index_LDADD = $(LDADD)
 test_index_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
-	$(top_builddir)/common/libp11-data.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
 	$(top_builddir)/common/libp11-library.la \
-	$(top_builddir)/common/libp11-common.la \
-	$(builddir)/libtestdata.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS) $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 test_module_SOURCES = test-module.c
 test_module_OBJECTS = test-module.$(OBJEXT)
 test_module_LDADD = $(LDADD)
 test_module_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
-	$(top_builddir)/common/libp11-data.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
 	$(top_builddir)/common/libp11-library.la \
-	$(top_builddir)/common/libp11-common.la \
-	$(builddir)/libtestdata.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS) $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+test_oid_SOURCES = test-oid.c
+test_oid_OBJECTS = test-oid.$(OBJEXT)
+test_oid_LDADD = $(LDADD)
+test_oid_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+am_test_openssl_OBJECTS = test-openssl.$(OBJEXT) enumerate.$(OBJEXT) \
+	extract-openssl.$(OBJEXT) save.$(OBJEXT) $(am__objects_1)
+test_openssl_OBJECTS = $(am_test_openssl_OBJECTS)
+test_openssl_LDADD = $(LDADD)
+test_openssl_DEPENDENCIES =  \
+	$(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 test_parser_SOURCES = test-parser.c
 test_parser_OBJECTS = test-parser.$(OBJEXT)
 test_parser_LDADD = $(LDADD)
 test_parser_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
-	$(top_builddir)/common/libp11-data.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
 	$(top_builddir)/common/libp11-library.la \
-	$(top_builddir)/common/libp11-common.la \
-	$(builddir)/libtestdata.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS) $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+test_pem_SOURCES = test-pem.c
+test_pem_OBJECTS = test-pem.$(OBJEXT)
+test_pem_LDADD = $(LDADD)
+test_pem_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 test_persist_SOURCES = test-persist.c
 test_persist_OBJECTS = test-persist.$(OBJEXT)
 test_persist_LDADD = $(LDADD)
 test_persist_DEPENDENCIES =  \
 	$(top_builddir)/trust/libtrust-testable.la \
-	$(top_builddir)/common/libp11-data.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
 	$(top_builddir)/common/libp11-library.la \
-	$(top_builddir)/common/libp11-common.la \
-	$(builddir)/libtestdata.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS) $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+am_test_save_OBJECTS = test-save.$(OBJEXT) save.$(OBJEXT) \
+	$(am__objects_1)
+test_save_OBJECTS = $(am_test_save_OBJECTS)
+test_save_LDADD = $(LDADD)
+test_save_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 test_token_SOURCES = test-token.c
 test_token_OBJECTS = test-token.$(OBJEXT)
 test_token_LDADD = $(LDADD)
 test_token_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
-	$(top_builddir)/common/libp11-data.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
 	$(top_builddir)/common/libp11-library.la \
-	$(top_builddir)/common/libp11-common.la \
-	$(builddir)/libtestdata.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS) $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+test_utf8_SOURCES = test-utf8.c
+test_utf8_OBJECTS = test-utf8.$(OBJEXT)
+test_utf8_LDADD = $(LDADD)
+test_utf8_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+test_x509_SOURCES = test-x509.c
+test_x509_OBJECTS = test-x509.$(OBJEXT)
+test_x509_LDADD = $(LDADD)
+test_x509_DEPENDENCIES = $(top_builddir)/trust/libtrust-testable.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
+	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
+SCRIPTS = $(noinst_SCRIPTS)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
 am__v_P_0 = false
@@ -210,7 +441,7 @@ am__v_at_ = $(am__v_at_@AM_DEFAULT_V@)
 am__v_at_0 = @
 am__v_at_1 = 
 DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir)
-depcomp = $(SHELL) $(top_srcdir)/depcomp
+depcomp = $(SHELL) $(top_srcdir)/build/litter/depcomp
 am__depfiles_maybe = depfiles
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
@@ -231,12 +462,22 @@ AM_V_CCLD = $(am__v_CCLD_@AM_V@)
 am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
-SOURCES = $(libtestdata_la_SOURCES) frob-nss-trust.c frob-pow.c \
-	frob-token.c test-builder.c test-index.c test-module.c \
-	test-parser.c test-persist.c test-token.c
-DIST_SOURCES = $(libtestdata_la_SOURCES) frob-nss-trust.c frob-pow.c \
-	frob-token.c test-builder.c test-index.c test-module.c \
-	test-parser.c test-persist.c test-token.c
+SOURCES = $(libtrust_test_la_SOURCES) frob-bc.c frob-cert.c frob-eku.c \
+	frob-ext.c frob-ku.c frob-nss-trust.c frob-oid.c frob-pow.c \
+	frob-token.c test-asn1.c test-base64.c test-builder.c \
+	$(test_bundle_SOURCES) $(test_cer_SOURCES) test-digest.c \
+	$(test_enumerate_SOURCES) test-index.c test-module.c \
+	test-oid.c $(test_openssl_SOURCES) test-parser.c test-pem.c \
+	test-persist.c $(test_save_SOURCES) test-token.c test-utf8.c \
+	test-x509.c
+DIST_SOURCES = $(libtrust_test_la_SOURCES) frob-bc.c frob-cert.c \
+	frob-eku.c frob-ext.c frob-ku.c frob-nss-trust.c frob-oid.c \
+	frob-pow.c frob-token.c test-asn1.c test-base64.c \
+	test-builder.c $(test_bundle_SOURCES) $(test_cer_SOURCES) \
+	test-digest.c $(test_enumerate_SOURCES) test-index.c \
+	test-module.c test-oid.c $(test_openssl_SOURCES) test-parser.c \
+	test-pem.c test-persist.c $(test_save_SOURCES) test-token.c \
+	test-utf8.c test-x509.c
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -331,6 +572,8 @@ INTL_MACOSX_LIBS = @INTL_MACOSX_LIBS@
 LCOV = @LCOV@
 LD = @LD@
 LDFLAGS = @LDFLAGS@
+LIBFFI_CFLAGS = @LIBFFI_CFLAGS@
+LIBFFI_LIBS = @LIBFFI_LIBS@
 LIBICONV = @LIBICONV@
 LIBINTL = @LIBINTL@
 LIBOBJS = @LIBOBJS@
@@ -444,47 +687,66 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 with_trust_paths = @with_trust_paths@
 NULL = 
-CUTEST_CFLAGS = \
-	-I$(top_srcdir)/build/cutest \
+TEST_CFLAGS = \
 	-DSRCDIR=\"$(abs_srcdir)\" \
 	-DBUILDDIR=\"$(abs_builddir)\" \
 	-DP11_KIT_FUTURE_UNSTABLE_API
 
-CUTEST_LIBS = $(top_builddir)/build/libcutest.la
 MEMCHECK_ENV = $(TEST_RUNNER) valgrind --error-exitcode=80 --quiet
 LEAKCHECK_ENV = $(TEST_RUNNER) valgrind --error-exitcode=81 --quiet --leak-check=yes
-INCLUDES = \
+HELLCHECK_ENV = $(TEST_RUNNER) valgrind --error-exitcode=82 --quiet --tool=helgrind
+COMMON = $(top_srcdir)/common
+TRUST = $(top_srcdir)/trust
+AM_CPPFLAGS = \
 	-I$(top_srcdir) \
 	-I$(srcdir)/.. \
-	-I$(top_srcdir)/common \
+	-I$(top_srcdir)/p11-kit \
+	-I$(COMMON) \
 	-DDATADIR=\"$(datadir)\" \
 	-DSYSCONFDIR=\"$(sysconfdir)\" \
-	$(CUTEST_CFLAGS)
+	-DP11_KIT_FUTURE_UNSTABLE_API \
+	$(LIBTASN1_CFLAGS) \
+	$(TEST_CFLAGS) \
+	$(NULL)
 
 noinst_LTLIBRARIES = \
-	libtestdata.la
+	libtrust-test.la
 
-libtestdata_la_SOURCES = \
-	test-data.c test-data.h
+libtrust_test_la_SOURCES = \
+	test-trust.c test-trust.h \
+	$(TRUST)/digest.c
 
 LDADD = \
 	$(top_builddir)/trust/libtrust-testable.la \
-	$(top_builddir)/common/libp11-data.la \
+	$(top_builddir)/trust/libtrust-data.la \
+	$(builddir)/libtrust-test.la \
+	$(top_builddir)/p11-kit/libp11-kit.la \
 	$(top_builddir)/common/libp11-library.la \
+	$(top_builddir)/common/libp11-test.la \
 	$(top_builddir)/common/libp11-common.la \
-	$(builddir)/libtestdata.la \
 	$(LIBTASN1_LIBS) \
-	$(CUTEST_LIBS) \
 	$(HASH_LIBS) \
 	$(NULL)
 
 CHECK_PROGS = \
+	test-digest \
+	test-asn1 \
+	test-base64 \
+	test-pem \
+	test-oid \
+	test-utf8 \
+	test-x509 \
 	test-persist \
 	test-index \
 	test-parser \
 	test-builder \
 	test-token \
 	test-module \
+	test-save \
+	test-enumerate \
+	test-cer \
+	test-bundle \
+	test-openssl \
 	$(NULL)
 
 frob_nss_trust_LDADD = \
@@ -497,6 +759,41 @@ EXTRA_DIST = \
 	input \
 	files \
 	$(NULL)
+
+TEST_RUNNER = libtool --mode=execute
+test_save_SOURCES = \
+	test-save.c \
+	$(TRUST)/save.c \
+	$(NULL)
+
+test_enumerate_SOURCES = \
+	test-enumerate.c \
+	$(TRUST)/enumerate.c \
+	$(NULL)
+
+test_cer_SOURCES = \
+	test-cer.c \
+	$(TRUST)/enumerate.c \
+	$(TRUST)/extract-cer.c \
+	$(TRUST)/save.c \
+	$(NULL)
+
+test_bundle_SOURCES = \
+	test-bundle.c \
+	$(TRUST)/enumerate.c \
+	$(TRUST)/extract-pem.c \
+	$(TRUST)/save.c \
+	$(NULL)
+
+test_openssl_SOURCES = \
+	test-openssl.c \
+	$(TRUST)/enumerate.c \
+	$(TRUST)/extract-openssl.c \
+	$(TRUST)/save.c \
+	$(NULL)
+
+noinst_SCRIPTS = \
+	test-extract
 
 all: all-am
 
@@ -533,6 +830,8 @@ $(top_srcdir)/configure: @MAINTAINER_MODE_TRUE@ $(am__configure_deps)
 $(ACLOCAL_M4): @MAINTAINER_MODE_TRUE@ $(am__aclocal_m4_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
 $(am__aclocal_m4_deps):
+test-extract: $(top_builddir)/config.status $(srcdir)/test-extract.in
+	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 
 clean-noinstLTLIBRARIES:
 	-test -z "$(noinst_LTLIBRARIES)" || rm -f $(noinst_LTLIBRARIES)
@@ -545,8 +844,8 @@ clean-noinstLTLIBRARIES:
 	  rm -f $${locs}; \
 	}
 
-libtestdata.la: $(libtestdata_la_OBJECTS) $(libtestdata_la_DEPENDENCIES) $(EXTRA_libtestdata_la_DEPENDENCIES) 
-	$(AM_V_CCLD)$(LINK)  $(libtestdata_la_OBJECTS) $(libtestdata_la_LIBADD) $(LIBS)
+libtrust-test.la: $(libtrust_test_la_OBJECTS) $(libtrust_test_la_DEPENDENCIES) $(EXTRA_libtrust_test_la_DEPENDENCIES) 
+	$(AM_V_CCLD)$(LINK)  $(libtrust_test_la_OBJECTS) $(libtrust_test_la_LIBADD) $(LIBS)
 
 clean-noinstPROGRAMS:
 	@list='$(noinst_PROGRAMS)'; test -n "$$list" || exit 0; \
@@ -557,9 +856,33 @@ clean-noinstPROGRAMS:
 	echo " rm -f" $$list; \
 	rm -f $$list
 
+frob-bc$(EXEEXT): $(frob_bc_OBJECTS) $(frob_bc_DEPENDENCIES) $(EXTRA_frob_bc_DEPENDENCIES) 
+	@rm -f frob-bc$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(frob_bc_OBJECTS) $(frob_bc_LDADD) $(LIBS)
+
+frob-cert$(EXEEXT): $(frob_cert_OBJECTS) $(frob_cert_DEPENDENCIES) $(EXTRA_frob_cert_DEPENDENCIES) 
+	@rm -f frob-cert$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(frob_cert_OBJECTS) $(frob_cert_LDADD) $(LIBS)
+
+frob-eku$(EXEEXT): $(frob_eku_OBJECTS) $(frob_eku_DEPENDENCIES) $(EXTRA_frob_eku_DEPENDENCIES) 
+	@rm -f frob-eku$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(frob_eku_OBJECTS) $(frob_eku_LDADD) $(LIBS)
+
+frob-ext$(EXEEXT): $(frob_ext_OBJECTS) $(frob_ext_DEPENDENCIES) $(EXTRA_frob_ext_DEPENDENCIES) 
+	@rm -f frob-ext$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(frob_ext_OBJECTS) $(frob_ext_LDADD) $(LIBS)
+
+frob-ku$(EXEEXT): $(frob_ku_OBJECTS) $(frob_ku_DEPENDENCIES) $(EXTRA_frob_ku_DEPENDENCIES) 
+	@rm -f frob-ku$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(frob_ku_OBJECTS) $(frob_ku_LDADD) $(LIBS)
+
 frob-nss-trust$(EXEEXT): $(frob_nss_trust_OBJECTS) $(frob_nss_trust_DEPENDENCIES) $(EXTRA_frob_nss_trust_DEPENDENCIES) 
 	@rm -f frob-nss-trust$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(frob_nss_trust_OBJECTS) $(frob_nss_trust_LDADD) $(LIBS)
+
+frob-oid$(EXEEXT): $(frob_oid_OBJECTS) $(frob_oid_DEPENDENCIES) $(EXTRA_frob_oid_DEPENDENCIES) 
+	@rm -f frob-oid$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(frob_oid_OBJECTS) $(frob_oid_LDADD) $(LIBS)
 
 frob-pow$(EXEEXT): $(frob_pow_OBJECTS) $(frob_pow_DEPENDENCIES) $(EXTRA_frob_pow_DEPENDENCIES) 
 	@rm -f frob-pow$(EXEEXT)
@@ -569,9 +892,33 @@ frob-token$(EXEEXT): $(frob_token_OBJECTS) $(frob_token_DEPENDENCIES) $(EXTRA_fr
 	@rm -f frob-token$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(frob_token_OBJECTS) $(frob_token_LDADD) $(LIBS)
 
+test-asn1$(EXEEXT): $(test_asn1_OBJECTS) $(test_asn1_DEPENDENCIES) $(EXTRA_test_asn1_DEPENDENCIES) 
+	@rm -f test-asn1$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(test_asn1_OBJECTS) $(test_asn1_LDADD) $(LIBS)
+
+test-base64$(EXEEXT): $(test_base64_OBJECTS) $(test_base64_DEPENDENCIES) $(EXTRA_test_base64_DEPENDENCIES) 
+	@rm -f test-base64$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(test_base64_OBJECTS) $(test_base64_LDADD) $(LIBS)
+
 test-builder$(EXEEXT): $(test_builder_OBJECTS) $(test_builder_DEPENDENCIES) $(EXTRA_test_builder_DEPENDENCIES) 
 	@rm -f test-builder$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(test_builder_OBJECTS) $(test_builder_LDADD) $(LIBS)
+
+test-bundle$(EXEEXT): $(test_bundle_OBJECTS) $(test_bundle_DEPENDENCIES) $(EXTRA_test_bundle_DEPENDENCIES) 
+	@rm -f test-bundle$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(test_bundle_OBJECTS) $(test_bundle_LDADD) $(LIBS)
+
+test-cer$(EXEEXT): $(test_cer_OBJECTS) $(test_cer_DEPENDENCIES) $(EXTRA_test_cer_DEPENDENCIES) 
+	@rm -f test-cer$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(test_cer_OBJECTS) $(test_cer_LDADD) $(LIBS)
+
+test-digest$(EXEEXT): $(test_digest_OBJECTS) $(test_digest_DEPENDENCIES) $(EXTRA_test_digest_DEPENDENCIES) 
+	@rm -f test-digest$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(test_digest_OBJECTS) $(test_digest_LDADD) $(LIBS)
+
+test-enumerate$(EXEEXT): $(test_enumerate_OBJECTS) $(test_enumerate_DEPENDENCIES) $(EXTRA_test_enumerate_DEPENDENCIES) 
+	@rm -f test-enumerate$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(test_enumerate_OBJECTS) $(test_enumerate_LDADD) $(LIBS)
 
 test-index$(EXEEXT): $(test_index_OBJECTS) $(test_index_DEPENDENCIES) $(EXTRA_test_index_DEPENDENCIES) 
 	@rm -f test-index$(EXEEXT)
@@ -581,17 +928,41 @@ test-module$(EXEEXT): $(test_module_OBJECTS) $(test_module_DEPENDENCIES) $(EXTRA
 	@rm -f test-module$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(test_module_OBJECTS) $(test_module_LDADD) $(LIBS)
 
+test-oid$(EXEEXT): $(test_oid_OBJECTS) $(test_oid_DEPENDENCIES) $(EXTRA_test_oid_DEPENDENCIES) 
+	@rm -f test-oid$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(test_oid_OBJECTS) $(test_oid_LDADD) $(LIBS)
+
+test-openssl$(EXEEXT): $(test_openssl_OBJECTS) $(test_openssl_DEPENDENCIES) $(EXTRA_test_openssl_DEPENDENCIES) 
+	@rm -f test-openssl$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(test_openssl_OBJECTS) $(test_openssl_LDADD) $(LIBS)
+
 test-parser$(EXEEXT): $(test_parser_OBJECTS) $(test_parser_DEPENDENCIES) $(EXTRA_test_parser_DEPENDENCIES) 
 	@rm -f test-parser$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(test_parser_OBJECTS) $(test_parser_LDADD) $(LIBS)
+
+test-pem$(EXEEXT): $(test_pem_OBJECTS) $(test_pem_DEPENDENCIES) $(EXTRA_test_pem_DEPENDENCIES) 
+	@rm -f test-pem$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(test_pem_OBJECTS) $(test_pem_LDADD) $(LIBS)
 
 test-persist$(EXEEXT): $(test_persist_OBJECTS) $(test_persist_DEPENDENCIES) $(EXTRA_test_persist_DEPENDENCIES) 
 	@rm -f test-persist$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(test_persist_OBJECTS) $(test_persist_LDADD) $(LIBS)
 
+test-save$(EXEEXT): $(test_save_OBJECTS) $(test_save_DEPENDENCIES) $(EXTRA_test_save_DEPENDENCIES) 
+	@rm -f test-save$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(test_save_OBJECTS) $(test_save_LDADD) $(LIBS)
+
 test-token$(EXEEXT): $(test_token_OBJECTS) $(test_token_DEPENDENCIES) $(EXTRA_test_token_DEPENDENCIES) 
 	@rm -f test-token$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(test_token_OBJECTS) $(test_token_LDADD) $(LIBS)
+
+test-utf8$(EXEEXT): $(test_utf8_OBJECTS) $(test_utf8_DEPENDENCIES) $(EXTRA_test_utf8_DEPENDENCIES) 
+	@rm -f test-utf8$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(test_utf8_OBJECTS) $(test_utf8_LDADD) $(LIBS)
+
+test-x509$(EXEEXT): $(test_x509_OBJECTS) $(test_x509_DEPENDENCIES) $(EXTRA_test_x509_DEPENDENCIES) 
+	@rm -f test-x509$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(test_x509_OBJECTS) $(test_x509_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -599,16 +970,40 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/digest.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/enumerate.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/extract-cer.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/extract-openssl.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/extract-pem.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-bc.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-cert.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-eku.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-ext.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-ku.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-nss-trust.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-oid.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-pow.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-token.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/save.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-asn1.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-base64.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-builder.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-data.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-bundle.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-cer.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-digest.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-enumerate.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-index.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-module.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-oid.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-openssl.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-parser.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-pem.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-persist.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-save.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-token.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-trust.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-utf8.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-x509.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
@@ -630,6 +1025,83 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$<' object='$@' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LTCOMPILE) -c -o $@ $<
+
+digest.lo: $(TRUST)/digest.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT digest.lo -MD -MP -MF $(DEPDIR)/digest.Tpo -c -o digest.lo `test -f '$(TRUST)/digest.c' || echo '$(srcdir)/'`$(TRUST)/digest.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/digest.Tpo $(DEPDIR)/digest.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$(TRUST)/digest.c' object='digest.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o digest.lo `test -f '$(TRUST)/digest.c' || echo '$(srcdir)/'`$(TRUST)/digest.c
+
+enumerate.o: $(TRUST)/enumerate.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT enumerate.o -MD -MP -MF $(DEPDIR)/enumerate.Tpo -c -o enumerate.o `test -f '$(TRUST)/enumerate.c' || echo '$(srcdir)/'`$(TRUST)/enumerate.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/enumerate.Tpo $(DEPDIR)/enumerate.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$(TRUST)/enumerate.c' object='enumerate.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o enumerate.o `test -f '$(TRUST)/enumerate.c' || echo '$(srcdir)/'`$(TRUST)/enumerate.c
+
+enumerate.obj: $(TRUST)/enumerate.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT enumerate.obj -MD -MP -MF $(DEPDIR)/enumerate.Tpo -c -o enumerate.obj `if test -f '$(TRUST)/enumerate.c'; then $(CYGPATH_W) '$(TRUST)/enumerate.c'; else $(CYGPATH_W) '$(srcdir)/$(TRUST)/enumerate.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/enumerate.Tpo $(DEPDIR)/enumerate.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$(TRUST)/enumerate.c' object='enumerate.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o enumerate.obj `if test -f '$(TRUST)/enumerate.c'; then $(CYGPATH_W) '$(TRUST)/enumerate.c'; else $(CYGPATH_W) '$(srcdir)/$(TRUST)/enumerate.c'; fi`
+
+extract-pem.o: $(TRUST)/extract-pem.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT extract-pem.o -MD -MP -MF $(DEPDIR)/extract-pem.Tpo -c -o extract-pem.o `test -f '$(TRUST)/extract-pem.c' || echo '$(srcdir)/'`$(TRUST)/extract-pem.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/extract-pem.Tpo $(DEPDIR)/extract-pem.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$(TRUST)/extract-pem.c' object='extract-pem.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o extract-pem.o `test -f '$(TRUST)/extract-pem.c' || echo '$(srcdir)/'`$(TRUST)/extract-pem.c
+
+extract-pem.obj: $(TRUST)/extract-pem.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT extract-pem.obj -MD -MP -MF $(DEPDIR)/extract-pem.Tpo -c -o extract-pem.obj `if test -f '$(TRUST)/extract-pem.c'; then $(CYGPATH_W) '$(TRUST)/extract-pem.c'; else $(CYGPATH_W) '$(srcdir)/$(TRUST)/extract-pem.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/extract-pem.Tpo $(DEPDIR)/extract-pem.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$(TRUST)/extract-pem.c' object='extract-pem.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o extract-pem.obj `if test -f '$(TRUST)/extract-pem.c'; then $(CYGPATH_W) '$(TRUST)/extract-pem.c'; else $(CYGPATH_W) '$(srcdir)/$(TRUST)/extract-pem.c'; fi`
+
+save.o: $(TRUST)/save.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT save.o -MD -MP -MF $(DEPDIR)/save.Tpo -c -o save.o `test -f '$(TRUST)/save.c' || echo '$(srcdir)/'`$(TRUST)/save.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/save.Tpo $(DEPDIR)/save.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$(TRUST)/save.c' object='save.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o save.o `test -f '$(TRUST)/save.c' || echo '$(srcdir)/'`$(TRUST)/save.c
+
+save.obj: $(TRUST)/save.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT save.obj -MD -MP -MF $(DEPDIR)/save.Tpo -c -o save.obj `if test -f '$(TRUST)/save.c'; then $(CYGPATH_W) '$(TRUST)/save.c'; else $(CYGPATH_W) '$(srcdir)/$(TRUST)/save.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/save.Tpo $(DEPDIR)/save.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$(TRUST)/save.c' object='save.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o save.obj `if test -f '$(TRUST)/save.c'; then $(CYGPATH_W) '$(TRUST)/save.c'; else $(CYGPATH_W) '$(srcdir)/$(TRUST)/save.c'; fi`
+
+extract-cer.o: $(TRUST)/extract-cer.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT extract-cer.o -MD -MP -MF $(DEPDIR)/extract-cer.Tpo -c -o extract-cer.o `test -f '$(TRUST)/extract-cer.c' || echo '$(srcdir)/'`$(TRUST)/extract-cer.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/extract-cer.Tpo $(DEPDIR)/extract-cer.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$(TRUST)/extract-cer.c' object='extract-cer.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o extract-cer.o `test -f '$(TRUST)/extract-cer.c' || echo '$(srcdir)/'`$(TRUST)/extract-cer.c
+
+extract-cer.obj: $(TRUST)/extract-cer.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT extract-cer.obj -MD -MP -MF $(DEPDIR)/extract-cer.Tpo -c -o extract-cer.obj `if test -f '$(TRUST)/extract-cer.c'; then $(CYGPATH_W) '$(TRUST)/extract-cer.c'; else $(CYGPATH_W) '$(srcdir)/$(TRUST)/extract-cer.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/extract-cer.Tpo $(DEPDIR)/extract-cer.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$(TRUST)/extract-cer.c' object='extract-cer.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o extract-cer.obj `if test -f '$(TRUST)/extract-cer.c'; then $(CYGPATH_W) '$(TRUST)/extract-cer.c'; else $(CYGPATH_W) '$(srcdir)/$(TRUST)/extract-cer.c'; fi`
+
+extract-openssl.o: $(TRUST)/extract-openssl.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT extract-openssl.o -MD -MP -MF $(DEPDIR)/extract-openssl.Tpo -c -o extract-openssl.o `test -f '$(TRUST)/extract-openssl.c' || echo '$(srcdir)/'`$(TRUST)/extract-openssl.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/extract-openssl.Tpo $(DEPDIR)/extract-openssl.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$(TRUST)/extract-openssl.c' object='extract-openssl.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o extract-openssl.o `test -f '$(TRUST)/extract-openssl.c' || echo '$(srcdir)/'`$(TRUST)/extract-openssl.c
+
+extract-openssl.obj: $(TRUST)/extract-openssl.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT extract-openssl.obj -MD -MP -MF $(DEPDIR)/extract-openssl.Tpo -c -o extract-openssl.obj `if test -f '$(TRUST)/extract-openssl.c'; then $(CYGPATH_W) '$(TRUST)/extract-openssl.c'; else $(CYGPATH_W) '$(srcdir)/$(TRUST)/extract-openssl.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/extract-openssl.Tpo $(DEPDIR)/extract-openssl.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$(TRUST)/extract-openssl.c' object='extract-openssl.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o extract-openssl.obj `if test -f '$(TRUST)/extract-openssl.c'; then $(CYGPATH_W) '$(TRUST)/extract-openssl.c'; else $(CYGPATH_W) '$(srcdir)/$(TRUST)/extract-openssl.c'; fi`
 
 mostlyclean-libtool:
 	-rm -f *.lo
@@ -815,7 +1287,7 @@ distdir: $(DISTFILES)
 check-am: all-am
 	$(MAKE) $(AM_MAKEFLAGS) check-TESTS
 check: check-am
-all-am: Makefile $(LTLIBRARIES) $(PROGRAMS)
+all-am: Makefile $(LTLIBRARIES) $(PROGRAMS) $(SCRIPTS)
 installdirs:
 install: install-am
 install-exec: install-exec-am
@@ -896,7 +1368,7 @@ install-ps: install-ps-am
 
 install-ps-am:
 
-installcheck-am:
+installcheck-am: installcheck-local
 
 maintainer-clean: maintainer-clean-am
 	-rm -rf ./$(DEPDIR)
@@ -929,10 +1401,11 @@ uninstall-am:
 	install-dvi-am install-exec install-exec-am install-html \
 	install-html-am install-info install-info-am install-man \
 	install-pdf install-pdf-am install-ps install-ps-am \
-	install-strip installcheck installcheck-am installdirs \
-	maintainer-clean maintainer-clean-generic mostlyclean \
-	mostlyclean-compile mostlyclean-generic mostlyclean-libtool \
-	pdf pdf-am ps ps-am tags tags-am uninstall uninstall-am
+	install-strip installcheck installcheck-am installcheck-local \
+	installdirs maintainer-clean maintainer-clean-generic \
+	mostlyclean mostlyclean-compile mostlyclean-generic \
+	mostlyclean-libtool pdf pdf-am ps ps-am tags tags-am uninstall \
+	uninstall-am
 
 
 memcheck: all
@@ -940,6 +1413,12 @@ memcheck: all
 
 leakcheck: all
 	make $(AM_MAKEFLAGS) TESTS_ENVIRONMENT="$(LEAKCHECK_ENV)" check-TESTS
+
+hellcheck: all
+	make $(AM_MAKEFLAGS) TESTS_ENVIRONMENT="$(HELLCHECK_ENV)" check-TESTS
+
+installcheck-local:
+	sh $(builddir)/test-extract
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

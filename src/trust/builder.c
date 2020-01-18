@@ -42,11 +42,13 @@
 #include "builder.h"
 #include "constants.h"
 #include "debug.h"
-#include "hash.h"
+#include "digest.h"
 #include "index.h"
 #include "message.h"
 #include "oid.h"
+#include "pkcs11i.h"
 #include "pkcs11x.h"
+#include "utf8.h"
 #include "x509.h"
 
 #include <assert.h>
@@ -77,8 +79,10 @@ typedef struct {
 	struct {
 		CK_ATTRIBUTE_TYPE type;
 		int flags;
+		bool (*validate) (p11_builder *, CK_ATTRIBUTE *);
 	} attrs[32];
 	CK_ATTRIBUTE * (*populate) (p11_builder *, p11_index *, CK_ATTRIBUTE *);
+	CK_RV (*validate) (p11_builder *, CK_ATTRIBUTE *, CK_ATTRIBUTE *);
 } builder_schema;
 
 static node_asn *
@@ -101,84 +105,75 @@ decode_or_get_asn1 (p11_builder *builder,
 }
 
 static unsigned char *
-lookup_extension_for_attrs (p11_builder *builder,
-                            p11_index *index,
-                            CK_ATTRIBUTE *id,
-                            CK_ATTRIBUTE *value,
-                            const unsigned char *oid,
-                            size_t *ext_len)
+lookup_extension (p11_builder *builder,
+                  p11_index *index,
+                  CK_ATTRIBUTE *cert,
+                  CK_ATTRIBUTE *public_key,
+                  const unsigned char *oid,
+                  size_t *ext_len)
 {
 	CK_OBJECT_CLASS klass = CKO_X_CERTIFICATE_EXTENSION;
 	CK_OBJECT_HANDLE obj;
 	CK_ATTRIBUTE *attrs;
+	CK_ATTRIBUTE *label;
+	void *value;
+	size_t length;
 	node_asn *node;
-	void *ext;
 
 	CK_ATTRIBUTE match[] = {
-		{ CKA_ID, },
+		{ CKA_PUBLIC_KEY_INFO, },
 		{ CKA_OBJECT_ID, (void *)oid, p11_oid_length (oid) },
 		{ CKA_CLASS, &klass, sizeof (klass) },
 		{ CKA_INVALID },
 	};
 
-	assert (ext_len != NULL);
+	if (public_key == NULL || public_key->type == CKA_INVALID)
+		public_key = p11_attrs_find_valid (cert, CKA_PUBLIC_KEY_INFO);
 
 	/* Look for a stapled certificate extension */
-	if (id != NULL) {
-		memcpy (match, id, sizeof (CK_ATTRIBUTE));
-
+	if (public_key != NULL) {
+		memcpy (match, public_key, sizeof (CK_ATTRIBUTE));
 		obj = p11_index_find (index, match, -1);
 		attrs = p11_index_lookup (index, obj);
 		if (attrs != NULL) {
-			ext = p11_attrs_find_value (attrs, CKA_VALUE, ext_len);
-			if (ext != NULL) {
-				if (*ext_len)
-					ext = memdup (ext, *ext_len);
-				return_val_if_fail (ext != NULL, NULL);
-				return ext;
+			value = p11_attrs_find_value (attrs, CKA_VALUE, &length);
+			if (value != NULL) {
+				node = decode_or_get_asn1 (builder, "PKIX1.Extension", value, length);
+				if (node == NULL) {
+					label = p11_attrs_find_valid (attrs, CKA_LABEL);
+					if (label == NULL)
+						label = p11_attrs_find_valid (cert, CKA_LABEL);
+					p11_message ("%.*s: invalid certificate extension",
+							label ? (int)label->ulValueLen : 7,
+							label ? (char *)label->pValue : "unknown");
+					return NULL;
+				}
+				return p11_asn1_read (node, "extnValue", ext_len);
 			}
 		}
 	}
 
 	/* Couldn't find a parsed extension, so look in the current certificate */
+	value = p11_attrs_find_value (cert, CKA_VALUE, &length);
 	if (value != NULL) {
-		node = decode_or_get_asn1 (builder, "PKIX1.Certificate",
-		                           value->pValue, value->ulValueLen);
-		return_val_if_fail (node != NULL, false);
-		return p11_x509_find_extension (node, oid, value->pValue,
-		                                value->ulValueLen, ext_len);
+		node = decode_or_get_asn1 (builder, "PKIX1.Certificate", value, length);
+		return_val_if_fail (node != NULL, NULL);
+		return p11_x509_find_extension (node, oid, value, length, ext_len);
 	}
 
 	return NULL;
 }
 
-static unsigned char *
-lookup_extension (p11_builder *builder,
-                  p11_index *index,
-                  CK_ATTRIBUTE *cert,
-                  const unsigned char *oid,
-                  size_t *ext_len)
-{
-	CK_ATTRIBUTE *id = p11_attrs_find_valid (cert, CKA_ID);
-	CK_ATTRIBUTE *value = p11_attrs_find_valid (cert, CKA_VALUE);
-	return lookup_extension_for_attrs (builder, index, id, value, oid, ext_len);
-}
-
 static CK_OBJECT_HANDLE *
 lookup_related  (p11_index *index,
                  CK_OBJECT_CLASS klass,
-                 CK_ATTRIBUTE *id)
+                 CK_ATTRIBUTE *attr)
 {
 	CK_ATTRIBUTE match[] = {
-		{ CKA_ID, },
+		{ attr->type, attr->pValue, attr->ulValueLen },
 		{ CKA_CLASS, &klass, sizeof (klass) },
 		{ CKA_INVALID }
 	};
-
-	return_val_if_fail (id != NULL, NULL);
-
-	match[0].pValue = id->pValue;
-	match[0].ulValueLen = id->ulValueLen;
 
 	return p11_index_find_all (index, match, -1);
 }
@@ -199,13 +194,155 @@ p11_builder_new (int flags)
 	return builder;
 }
 
+static int
+atoin (const char *p,
+       int digits)
+{
+	int ret = 0, base = 1;
+	while(--digits >= 0) {
+		if (p[digits] < '0' || p[digits] > '9')
+			return -1;
+		ret += (p[digits] - '0') * base;
+		base *= 10;
+	}
+	return ret;
+}
+
+static bool
+type_bool (p11_builder *builder,
+           CK_ATTRIBUTE *attr)
+{
+	return (attr->pValue != NULL &&
+	        sizeof (CK_BBOOL) == attr->ulValueLen);
+}
+
+static bool
+type_ulong (p11_builder *builder,
+            CK_ATTRIBUTE *attr)
+{
+	return (attr->pValue != NULL &&
+	        sizeof (CK_ULONG) == attr->ulValueLen);
+}
+
+static bool
+type_utf8 (p11_builder *builder,
+           CK_ATTRIBUTE *attr)
+{
+	if (attr->ulValueLen == 0)
+		return true;
+	if (attr->pValue == NULL)
+		return false;
+	return p11_utf8_validate (attr->pValue, attr->ulValueLen);
+}
+
+static bool
+type_date (p11_builder *builder,
+           CK_ATTRIBUTE *attr)
+{
+	CK_DATE *date;
+	struct tm tm;
+	struct tm two;
+
+	if (attr->ulValueLen == 0)
+		return true;
+	if (attr->pValue == NULL || attr->ulValueLen != sizeof (CK_DATE))
+		return false;
+
+	date = attr->pValue;
+	memset (&tm, 0, sizeof (tm));
+	tm.tm_year = atoin ((char *)date->year, 4) - 1900;
+	tm.tm_mon = atoin ((char *)date->month, 2);
+	tm.tm_mday = atoin ((char *)date->day, 2);
+
+	if (tm.tm_year < 0 || tm.tm_mon <= 0 || tm.tm_mday <= 0)
+		return false;
+
+	memcpy (&two, &tm, sizeof (tm));
+	if (mktime (&two) < 0)
+		return false;
+
+	/* If mktime changed anything, then bad date */
+	if (tm.tm_year != two.tm_year ||
+	    tm.tm_mon != two.tm_mon ||
+	    tm.tm_mday != two.tm_mday)
+		return false;
+
+	return true;
+}
+
+static bool
+check_der_struct (p11_builder *builder,
+                  const char *struct_name,
+                  CK_ATTRIBUTE *attr)
+{
+	node_asn *asn;
+
+	if (attr->ulValueLen == 0)
+		return true;
+	if (attr->pValue == NULL)
+		return false;
+
+	asn = p11_asn1_decode (builder->asn1_defs, struct_name,
+	                       attr->pValue, attr->ulValueLen, NULL);
+
+	if (asn == NULL)
+		return false;
+
+	asn1_delete_structure (&asn);
+	return true;
+}
+
+static bool
+type_der_name (p11_builder *builder,
+               CK_ATTRIBUTE *attr)
+{
+	return check_der_struct (builder, "PKIX1.Name", attr);
+}
+
+static bool
+type_der_serial (p11_builder *builder,
+                 CK_ATTRIBUTE *attr)
+{
+	return check_der_struct (builder, "PKIX1.CertificateSerialNumber", attr);
+}
+
+static bool
+type_der_oid (p11_builder *builder,
+              CK_ATTRIBUTE *attr)
+{
+	/* AttributeType is an OBJECT ID */
+	return check_der_struct (builder, "PKIX1.AttributeType", attr);
+}
+
+static bool
+type_der_cert (p11_builder *builder,
+               CK_ATTRIBUTE *attr)
+{
+	return check_der_struct (builder, "PKIX1.Certificate", attr);
+}
+
+static bool
+type_der_key (p11_builder *builder,
+              CK_ATTRIBUTE *attr)
+{
+	return check_der_struct (builder, "PKIX1.SubjectPublicKeyInfo", attr);
+}
+
+static bool
+type_der_ext (p11_builder *builder,
+              CK_ATTRIBUTE *attr)
+{
+	return check_der_struct (builder, "PKIX1.Extension", attr);
+}
+
 #define COMMON_ATTRS \
-	{ CKA_CLASS, REQUIRE | CREATE }, \
-	{ CKA_TOKEN, CREATE | WANT }, \
-	{ CKA_MODIFIABLE, CREATE | WANT }, \
-	{ CKA_PRIVATE, CREATE }, \
-	{ CKA_LABEL, CREATE | MODIFY | WANT }, \
-	{ CKA_X_GENERATED, CREATE }
+	{ CKA_CLASS, REQUIRE | CREATE, type_ulong }, \
+	{ CKA_TOKEN, CREATE | WANT, type_bool }, \
+	{ CKA_MODIFIABLE, CREATE | WANT, type_bool }, \
+	{ CKA_PRIVATE, CREATE, type_bool }, \
+	{ CKA_LABEL, CREATE | MODIFY | WANT, type_utf8 }, \
+	{ CKA_X_GENERATED, CREATE }, \
+	{ CKA_X_ORIGIN, NONE } \
 
 static CK_ATTRIBUTE *
 common_populate (p11_builder *builder,
@@ -236,23 +373,9 @@ calc_check_value (const unsigned char *data,
 		  size_t length,
 		  CK_BYTE *check_value)
 {
-	unsigned char checksum[P11_HASH_SHA1_LEN];
-	p11_hash_sha1 (checksum, data, length, NULL);
+	unsigned char checksum[P11_DIGEST_SHA1_LEN];
+	p11_digest_sha1 (checksum, data, length, NULL);
 	memcpy (check_value, checksum, 3);
-}
-
-static int
-atoin (const char *p,
-       int digits)
-{
-	int ret = 0, base = 1;
-	while(--digits >= 0) {
-		if (p[digits] < '0' || p[digits] > '9')
-			return -1;
-		ret += (p[digits] - '0') * base;
-		base *= 10;
-	}
-	return ret;
 }
 
 static int
@@ -386,15 +509,17 @@ calc_element (node_asn *node,
 
 static bool
 is_v1_x509_authority (p11_builder *builder,
-                      CK_ATTRIBUTE *value)
+                      CK_ATTRIBUTE *cert)
 {
 	CK_ATTRIBUTE subject;
 	CK_ATTRIBUTE issuer;
+	CK_ATTRIBUTE *value;
 	char buffer[16];
 	node_asn *node;
 	int len;
 	int ret;
 
+	value = p11_attrs_find_valid (cert, CKA_VALUE);
 	if (value == NULL)
 		return false;
 
@@ -432,10 +557,11 @@ is_v1_x509_authority (p11_builder *builder,
 static bool
 calc_certificate_category (p11_builder *builder,
                            p11_index *index,
-                           CK_ATTRIBUTE *id,
-                           CK_ATTRIBUTE *value,
+                           CK_ATTRIBUTE *cert,
+                           CK_ATTRIBUTE *public_key,
                            CK_ULONG *category)
 {
+	CK_ATTRIBUTE *label;
 	unsigned char *ext;
 	size_t ext_len;
 	bool is_ca = 0;
@@ -450,16 +576,19 @@ calc_certificate_category (p11_builder *builder,
 	 */
 
 	/* See if we have a basic constraints extension */
-	ext = lookup_extension_for_attrs (builder, index, id, value, P11_OID_BASIC_CONSTRAINTS, &ext_len);
+	ext = lookup_extension (builder, index, cert, public_key, P11_OID_BASIC_CONSTRAINTS, &ext_len);
 	if (ext != NULL) {
 		ret = p11_x509_parse_basic_constraints (builder->asn1_defs, ext, ext_len, &is_ca);
 		free (ext);
 		if (!ret) {
-			p11_message ("invalid basic constraints certificate extension");
+			label = p11_attrs_find_valid (cert, CKA_LABEL);
+			p11_message ("%.*s: invalid basic constraints certificate extension",
+				     label ? (int)label->ulValueLen : 7,
+				     label ? (char *)label->pValue : "unknown");
 			return false;
 		}
 
-	} else if (is_v1_x509_authority (builder, value)) {
+	} else if (is_v1_x509_authority (builder, cert)) {
 		/*
 		 * If there is no basic constraints extension, and the CA version is
 		 * v1, and is self-signed, then we assume this is a certificate authority.
@@ -467,7 +596,7 @@ calc_certificate_category (p11_builder *builder,
 		 */
 		is_ca = 1;
 
-	} else if (value == NULL) {
+	} else if (!p11_attrs_find_valid (cert, CKA_VALUE)) {
 		/*
 		 * If we have no certificate value, then this is unknown
 		 */
@@ -484,9 +613,10 @@ static CK_ATTRIBUTE *
 certificate_value_attrs (CK_ATTRIBUTE *attrs,
                          node_asn *node,
                          const unsigned char *der,
-                         size_t der_len)
+                         size_t der_len,
+                         CK_ATTRIBUTE *public_key)
 {
-	unsigned char checksum[P11_HASH_SHA1_LEN];
+	unsigned char checksum[P11_DIGEST_SHA1_LEN];
 	CK_BBOOL falsev = CK_FALSE;
 	CK_ULONG zero = 0UL;
 	CK_BYTE checkv[3];
@@ -521,6 +651,10 @@ certificate_value_attrs (CK_ATTRIBUTE *attrs,
 	if (!calc_date (node, "tbsCertificate.validity.notAfter", &endv))
 		end_date.ulValueLen = 0;
 
+	if (calc_element (node, der, der_len, "tbsCertificate.subjectPublicKeyInfo", public_key))
+		public_key->type = CKA_PUBLIC_KEY_INFO;
+	else
+		public_key->type = CKA_INVALID;
 	calc_element (node, der, der_len, "tbsCertificate.issuer.rdnSequence", &issuer);
 	if (!calc_element (node, der, der_len, "tbsCertificate.subject.rdnSequence", &subject))
 		subject.type = CKA_INVALID;
@@ -552,7 +686,7 @@ certificate_value_attrs (CK_ATTRIBUTE *attrs,
 	attrs = p11_attrs_build (attrs, &trusted, &distrusted, &url, &hash_of_issuer_public_key,
 	                         &hash_of_subject_public_key, &java_midp_security_domain,
 	                         &check_value, &start_date, &end_date, &id,
-				 &subject, &issuer, &serial_number, &label,
+	                         &subject, &issuer, &serial_number, &label, public_key,
 				 NULL);
 	return_val_if_fail (attrs != NULL, NULL);
 
@@ -567,11 +701,10 @@ certificate_populate (p11_builder *builder,
 {
 	CK_ULONG categoryv = 0UL;
 	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE public_key;
 	node_asn *node = NULL;
 	unsigned char *der = NULL;
 	size_t der_len = 0;
-	CK_ATTRIBUTE *value;
-	CK_ATTRIBUTE *id;
 
 	CK_ATTRIBUTE category = { CKA_CERTIFICATE_CATEGORY, &categoryv, sizeof (categoryv) };
 	CK_ATTRIBUTE empty_value = { CKA_VALUE, "", 0 };
@@ -579,47 +712,81 @@ certificate_populate (p11_builder *builder,
 	attrs = common_populate (builder, index, cert);
 	return_val_if_fail (attrs != NULL, NULL);
 
-	value = p11_attrs_find_valid (cert, CKA_VALUE);
-	if (value != NULL) {
-		der = value->pValue;
-		der_len = value->ulValueLen;
+	der = p11_attrs_find_value (cert, CKA_VALUE, &der_len);
+	if (der != NULL)
 		node = decode_or_get_asn1 (builder, "PKIX1.Certificate", der, der_len);
-	}
 
-	attrs = certificate_value_attrs (attrs, node, der, der_len);
+	attrs = certificate_value_attrs (attrs, node, der, der_len, &public_key);
 	return_val_if_fail (attrs != NULL, NULL);
 
-	id = p11_attrs_find_valid (cert, CKA_ID);
-	if (id == NULL)
-		id = p11_attrs_find_valid (attrs, CKA_ID);
-
-	if (!calc_certificate_category (builder, index, id, value, &categoryv))
+	if (!calc_certificate_category (builder, index, cert, &public_key, &categoryv))
 		categoryv = 0;
 
 	return p11_attrs_build (attrs, &category, &empty_value, NULL);
 }
 
+static bool
+have_attribute (CK_ATTRIBUTE *attrs1,
+                CK_ATTRIBUTE *attrs2,
+                CK_ATTRIBUTE_TYPE type)
+{
+	CK_ATTRIBUTE *attr;
+
+	attr = p11_attrs_find (attrs1, type);
+	if (attr == NULL)
+		attr = p11_attrs_find (attrs2, type);
+	return attr != NULL && attr->ulValueLen > 0;
+}
+
+static CK_RV
+certificate_validate (p11_builder *builder,
+                      CK_ATTRIBUTE *attrs,
+                      CK_ATTRIBUTE *merge)
+{
+	/*
+	 * In theory we should be validating that in the absence of CKA_VALUE
+	 * various other fields must be set. However we do not enforce this
+	 * because we want to be able to have certificates without a value
+	 * but issuer and serial number, for blacklisting purposes.
+	 */
+
+	if (have_attribute (attrs, merge, CKA_URL)) {
+		if (!have_attribute (attrs, merge, CKA_HASH_OF_SUBJECT_PUBLIC_KEY)) {
+			p11_message ("missing the CKA_HASH_OF_SUBJECT_PUBLIC_KEY attribute");
+			return CKR_TEMPLATE_INCONSISTENT;
+		}
+
+		if (!have_attribute (attrs, merge, CKA_HASH_OF_SUBJECT_PUBLIC_KEY)) {
+			p11_message ("missing the CKA_HASH_OF_ISSUER_PUBLIC_KEY attribute");
+			return CKR_TEMPLATE_INCONSISTENT;
+		}
+	}
+
+	return CKR_OK;
+}
+
 const static builder_schema certificate_schema = {
 	NORMAL_BUILD,
 	{ COMMON_ATTRS,
-	  { CKA_CERTIFICATE_TYPE, REQUIRE | CREATE },
-	  { CKA_TRUSTED, },
-	  { CKA_X_DISTRUSTED, },
-	  { CKA_CERTIFICATE_CATEGORY, CREATE | MODIFY | WANT },
-	  { CKA_CHECK_VALUE, CREATE | MODIFY | WANT },
-	  { CKA_START_DATE, CREATE | MODIFY | WANT },
-	  { CKA_END_DATE, CREATE | MODIFY | WANT },
-	  { CKA_SUBJECT, CREATE | WANT },
+	  { CKA_CERTIFICATE_TYPE, REQUIRE | CREATE, type_ulong },
+	  { CKA_TRUSTED, CREATE | WANT, type_bool },
+	  { CKA_X_DISTRUSTED, CREATE | WANT, type_bool },
+	  { CKA_CERTIFICATE_CATEGORY, CREATE | WANT, type_ulong },
+	  { CKA_CHECK_VALUE, CREATE | WANT, },
+	  { CKA_START_DATE, CREATE | MODIFY | WANT, type_date },
+	  { CKA_END_DATE, CREATE | MODIFY | WANT, type_date },
+	  { CKA_SUBJECT, CREATE | WANT, type_der_name },
 	  { CKA_ID, CREATE | MODIFY | WANT },
-	  { CKA_ISSUER, CREATE | MODIFY | WANT },
-	  { CKA_SERIAL_NUMBER, CREATE | MODIFY | WANT },
-	  { CKA_VALUE, CREATE },
-	  { CKA_URL, CREATE },
+	  { CKA_ISSUER, CREATE | MODIFY | WANT, type_der_name },
+	  { CKA_SERIAL_NUMBER, CREATE | MODIFY | WANT, type_der_serial },
+	  { CKA_VALUE, CREATE, type_der_cert },
+	  { CKA_URL, CREATE, type_utf8 },
 	  { CKA_HASH_OF_SUBJECT_PUBLIC_KEY, CREATE },
 	  { CKA_HASH_OF_ISSUER_PUBLIC_KEY, CREATE },
-	  { CKA_JAVA_MIDP_SECURITY_DOMAIN, CREATE },
+	  { CKA_JAVA_MIDP_SECURITY_DOMAIN, CREATE, type_ulong },
+	  { CKA_PUBLIC_KEY_INFO, WANT, type_der_key },
 	  { CKA_INVALID },
-	}, certificate_populate,
+	}, certificate_populate, certificate_validate,
 };
 
 static CK_ATTRIBUTE *
@@ -627,16 +794,27 @@ extension_populate (p11_builder *builder,
                     p11_index *index,
                     CK_ATTRIBUTE *extension)
 {
+	CK_ATTRIBUTE object_id = { CKA_OBJECT_ID };
 	CK_ATTRIBUTE *attrs = NULL;
+	void *der;
+	size_t len;
+	node_asn *asn;
 
 	attrs = common_populate (builder, index, extension);
 	return_val_if_fail (attrs != NULL, NULL);
 
-	if (!p11_attrs_find_valid (extension, CKA_X_CRITICAL)) {
-		CK_BBOOL falsev = CK_FALSE;
-		CK_ATTRIBUTE critical = { CKA_X_CRITICAL, &falsev, sizeof (falsev) };
-		attrs = p11_attrs_build (attrs, &critical, NULL);
-		return_val_if_fail (attrs != NULL, NULL);
+	/* Pull the object id out of the extension if not present */
+	if (!p11_attrs_find_valid (attrs, CKA_OBJECT_ID)) {
+		der = p11_attrs_find_value (extension, CKA_VALUE, &len);
+		return_val_if_fail (der != NULL, NULL);
+
+		asn = decode_or_get_asn1 (builder, "PKIX1.Extension", der, len);
+		return_val_if_fail (asn != NULL, NULL);
+
+		if (calc_element (asn, der, len, "extnID", &object_id)) {
+			attrs = p11_attrs_build (attrs, &object_id, NULL);
+			return_val_if_fail (attrs != NULL, NULL);
+		}
 	}
 
 	return attrs;
@@ -645,10 +823,10 @@ extension_populate (p11_builder *builder,
 const static builder_schema extension_schema = {
 	NORMAL_BUILD,
 	{ COMMON_ATTRS,
-	  { CKA_VALUE, REQUIRE | CREATE },
-	  { CKA_X_CRITICAL, WANT },
-	  { CKA_OBJECT_ID, REQUIRE | CREATE },
-	  { CKA_ID, CREATE | MODIFY | WANT },
+	  { CKA_VALUE, REQUIRE | CREATE, type_der_ext },
+	  { CKA_PUBLIC_KEY_INFO, REQUIRE | CREATE, type_der_key },
+	  { CKA_OBJECT_ID, CREATE | WANT, type_der_oid },
+	  { CKA_ID, CREATE | MODIFY },
 	  { CKA_INVALID },
 	}, extension_populate,
 };
@@ -658,9 +836,9 @@ data_populate (p11_builder *builder,
                p11_index *index,
                CK_ATTRIBUTE *data)
 {
-	static CK_ATTRIBUTE value = { CKA_VALUE, "", 0 };
-	static CK_ATTRIBUTE application = { CKA_APPLICATION, "", 0 };
-	static CK_ATTRIBUTE object_id = { CKA_OBJECT_ID, "", 0 };
+	static const CK_ATTRIBUTE value = { CKA_VALUE, "", 0 };
+	static const CK_ATTRIBUTE application = { CKA_APPLICATION, "", 0 };
+	static const CK_ATTRIBUTE object_id = { CKA_OBJECT_ID, "", 0 };
 	CK_ATTRIBUTE *attrs;
 
 	attrs = common_populate (builder, index, data);
@@ -673,8 +851,8 @@ const static builder_schema data_schema = {
 	NORMAL_BUILD,
 	{ COMMON_ATTRS,
 	  { CKA_VALUE, CREATE | MODIFY | WANT },
-	  { CKA_APPLICATION, CREATE | MODIFY | WANT },
-	  { CKA_OBJECT_ID, CREATE | MODIFY | WANT },
+	  { CKA_APPLICATION, CREATE | MODIFY | WANT, type_utf8 },
+	  { CKA_OBJECT_ID, CREATE | MODIFY | WANT, type_der_oid },
 	  { CKA_INVALID },
 	}, data_populate,
 };
@@ -729,33 +907,6 @@ const static builder_schema builtin_schema = {
 	}, common_populate
 };
 
-static void
-attrs_filter_if_unchanged (CK_ATTRIBUTE *attrs,
-                           CK_ATTRIBUTE *merge)
-{
-	CK_ATTRIBUTE *attr;
-	int in, out;
-
-	assert (attrs != NULL);
-	assert (merge != NULL);
-
-	for (in = 0, out = 0; !p11_attrs_terminator (merge + in); in++) {
-		attr = p11_attrs_find (attrs, merge[in].type);
-		if (attr && p11_attr_equal (attr, merge + in)) {
-			free (merge[in].pValue);
-			merge[in].pValue = NULL;
-			merge[in].ulValueLen = 0;
-		} else {
-			if (in != out)
-				memcpy (merge + out, merge + in, sizeof (CK_ATTRIBUTE));
-			out++;
-		}
-	}
-
-	merge[out].type = CKA_INVALID;
-	assert (p11_attrs_terminator (merge + out));
-}
-
 static const char *
 value_name (const p11_constant *info,
             CK_ATTRIBUTE_TYPE type)
@@ -774,12 +925,12 @@ static CK_RV
 build_for_schema (p11_builder *builder,
                   p11_index *index,
                   const builder_schema *schema,
-                  CK_ATTRIBUTE **object,
-                  CK_ATTRIBUTE *merge)
+                  CK_ATTRIBUTE *attrs,
+                  CK_ATTRIBUTE *merge,
+                  CK_ATTRIBUTE **extra)
 {
-	CK_ATTRIBUTE *extra;
-	CK_ATTRIBUTE *attrs;
 	CK_BBOOL modifiable;
+	CK_ATTRIBUTE *attr;
 	bool modifying;
 	bool creating;
 	bool populate;
@@ -787,12 +938,12 @@ build_for_schema (p11_builder *builder,
 	bool found;
 	int flags;
 	int i, j;
+	CK_RV rv;
 
-	attrs = *object;
 	populate = false;
 
 	/* Signifies that data is being loaded */
-	loading = p11_index_in_batch (index);
+	loading = p11_index_loading (index);
 
 	/* Signifies that this is being created by a caller, instead of loaded */
 	creating = (attrs == NULL && !loading);
@@ -808,9 +959,6 @@ build_for_schema (p11_builder *builder,
 		}
 	}
 
-	if (attrs != NULL)
-		attrs_filter_if_unchanged (attrs, merge);
-
 	if (creating && (builder->flags & P11_BUILDER_FLAG_TOKEN)) {
 		if (schema->build_flags & GENERATED_CLASS) {
 			p11_message ("objects of this type cannot be created");
@@ -819,6 +967,12 @@ build_for_schema (p11_builder *builder,
 	}
 
 	for (i = 0; merge[i].type != CKA_INVALID; i++) {
+
+		/* Don't validate attribute if not changed */
+		attr = p11_attrs_find (attrs, merge[i].type);
+		if (attr && p11_attr_equal (attr, merge + i))
+			continue;
+
 		found = false;
 		for (j = 0; schema->attrs[j].type != CKA_INVALID; j++) {
 			if (schema->attrs[j].type != merge[i].type)
@@ -834,6 +988,12 @@ build_for_schema (p11_builder *builder,
 				p11_message ("the %s attribute cannot be changed",
 				             type_name (schema->attrs[j].type));
 				return CKR_ATTRIBUTE_READ_ONLY;
+			}
+			if (!loading && schema->attrs[j].validate != NULL &&
+			    !schema->attrs[j].validate (builder, merge + i)) {
+				p11_message ("the %s attribute has an invalid value",
+				             type_name (schema->attrs[j].type));
+				return CKR_ATTRIBUTE_VALUE_INVALID;
 			}
 			found = true;
 			break;
@@ -872,21 +1032,15 @@ build_for_schema (p11_builder *builder,
 		}
 	}
 
-	if (populate && schema->populate) {
-		extra = schema->populate (builder, index, merge);
-		if (extra != NULL)
-			merge = p11_attrs_merge (merge, extra, false);
+	/* Validate the result, before committing to the change. */
+	if (!loading && schema->validate) {
+		rv = (schema->validate) (builder, attrs, merge);
+		if (rv != CKR_OK)
+			return rv;
 	}
 
-	/*
-	 * TODO: Validate the result, before committing to the change. We can
-	 * do this by doing a shallow copy of merge + attrs and then validating
-	 * that. Although there may be duplicate attributets, the validation
-	 * code will see the new ones because they're first.
-	 */
-
-	*object = p11_attrs_merge (attrs, merge, true);
-	return_val_if_fail (*object != NULL, CKR_HOST_MEMORY);
+	if (populate && schema->populate)
+		*extra = schema->populate (builder, index, merge);
 
 	return CKR_OK;
 }
@@ -894,11 +1048,11 @@ build_for_schema (p11_builder *builder,
 CK_RV
 p11_builder_build (void *bilder,
                    p11_index *index,
-                   CK_ATTRIBUTE **object,
-                   CK_ATTRIBUTE *merge)
+                   CK_ATTRIBUTE *attrs,
+                   CK_ATTRIBUTE *merge,
+                   CK_ATTRIBUTE **populate)
 {
 	p11_builder *builder = bilder;
-	CK_ATTRIBUTE *attrs;
 	CK_OBJECT_CLASS klass;
 	CK_CERTIFICATE_TYPE type;
 	CK_BBOOL token;
@@ -906,8 +1060,6 @@ p11_builder_build (void *bilder,
 	return_val_if_fail (builder != NULL, CKR_GENERAL_ERROR);
 	return_val_if_fail (index != NULL, CKR_GENERAL_ERROR);
 	return_val_if_fail (merge != NULL, CKR_GENERAL_ERROR);
-
-	attrs = *object;
 
 	if (!p11_attrs_find_ulong (attrs ? attrs : merge, CKA_CLASS, &klass)) {
 		p11_message ("no CKA_CLASS attribute found");
@@ -927,7 +1079,7 @@ p11_builder_build (void *bilder,
 			p11_message ("missing %s on object", type_name (CKA_CERTIFICATE_TYPE));
 			return CKR_TEMPLATE_INCOMPLETE;
 		} else if (type == CKC_X_509) {
-			return build_for_schema (builder, index, &certificate_schema, object, merge);
+			return build_for_schema (builder, index, &certificate_schema, attrs, merge, populate);
 		} else {
 			p11_message ("%s unsupported %s", value_name (p11_constant_certs, type),
 			             type_name (CKA_CERTIFICATE_TYPE));
@@ -935,19 +1087,19 @@ p11_builder_build (void *bilder,
 		}
 
 	case CKO_X_CERTIFICATE_EXTENSION:
-		return build_for_schema (builder, index, &extension_schema, object, merge);
+		return build_for_schema (builder, index, &extension_schema, attrs, merge, populate);
 
 	case CKO_DATA:
-		return build_for_schema (builder, index, &data_schema, object, merge);
+		return build_for_schema (builder, index, &data_schema, attrs, merge, populate);
 
 	case CKO_NSS_TRUST:
-		return build_for_schema (builder, index, &trust_schema, object, merge);
+		return build_for_schema (builder, index, &trust_schema, attrs, merge, populate);
 
 	case CKO_NSS_BUILTIN_ROOT_LIST:
-		return build_for_schema (builder, index, &builtin_schema, object, merge);
+		return build_for_schema (builder, index, &builtin_schema, attrs, merge, populate);
 
 	case CKO_X_TRUST_ASSERTION:
-		return build_for_schema (builder, index, &assertion_schema, object, merge);
+		return build_for_schema (builder, index, &assertion_schema, attrs, merge, populate);
 
 	default:
 		p11_message ("%s unsupported object class",
@@ -1005,7 +1157,7 @@ build_trust_object_ku (p11_builder *builder,
 
 	/* If blacklisted, don't even bother looking at extensions */
 	if (present != CKT_NSS_NOT_TRUSTED)
-		data = lookup_extension (builder, index, cert, P11_OID_KEY_USAGE, &length);
+		data = lookup_extension (builder, index, cert, NULL, P11_OID_KEY_USAGE, &length);
 
 	if (data) {
 		/*
@@ -1140,8 +1292,8 @@ replace_nss_trust_object (p11_builder *builder,
 	CK_RV rv;
 
 	CK_OBJECT_CLASS klassv = CKO_NSS_TRUST;
-	CK_BYTE sha1v[P11_HASH_SHA1_LEN];
-	CK_BYTE md5v[P11_HASH_MD5_LEN];
+	CK_BYTE sha1v[P11_DIGEST_SHA1_LEN];
+	CK_BYTE md5v[P11_DIGEST_MD5_LEN];
 	CK_BBOOL generatedv = CK_FALSE;
 	CK_BBOOL falsev = CK_FALSE;
 
@@ -1178,8 +1330,8 @@ replace_nss_trust_object (p11_builder *builder,
 		md5_hash.type = CKA_INVALID;
 		sha1_hash.type = CKA_INVALID;
 	} else {
-		p11_hash_md5 (md5v, value, length, NULL);
-		p11_hash_sha1 (sha1v, value, length, NULL);
+		p11_digest_md5 (md5v, value, length, NULL);
+		p11_digest_sha1 (sha1v, value, length, NULL);
 	}
 	if (!issuer)
 		issuer = &invalid;
@@ -1478,7 +1630,7 @@ replace_trust_and_assertions (p11_builder *builder,
 		authority = CK_TRUE;
 
 	if (!distrust) {
-		ext = lookup_extension (builder, index, cert, P11_OID_EXTENDED_KEY_USAGE, &ext_len);
+		ext = lookup_extension (builder, index, cert, NULL, P11_OID_EXTENDED_KEY_USAGE, &ext_len);
 		if (ext != NULL) {
 			purposes = p11_x509_parse_extended_key_usage (builder->asn1_defs, ext, ext_len);
 			if (purposes == NULL)
@@ -1486,7 +1638,7 @@ replace_trust_and_assertions (p11_builder *builder,
 			free (ext);
 		}
 
-		ext = lookup_extension (builder, index, cert, P11_OID_OPENSSL_REJECT, &ext_len);
+		ext = lookup_extension (builder, index, cert, NULL, P11_OID_OPENSSL_REJECT, &ext_len);
 		if (ext != NULL) {
 			rejects = p11_x509_parse_extended_key_usage (builder->asn1_defs, ext, ext_len);
 			if (rejects == NULL)
@@ -1523,14 +1675,14 @@ replace_compat_for_cert (p11_builder *builder,
                          CK_OBJECT_HANDLE handle,
                          CK_ATTRIBUTE *attrs)
 {
-	static CK_OBJECT_CLASS certificate = CKO_CERTIFICATE;
-	static CK_CERTIFICATE_TYPE x509 = CKC_X_509;
+	static const CK_OBJECT_CLASS certificate = CKO_CERTIFICATE;
+	static const CK_CERTIFICATE_TYPE x509 = CKC_X_509;
 	CK_ATTRIBUTE *value;
 
 	CK_ATTRIBUTE match[] = {
 		{ CKA_VALUE, },
-		{ CKA_CLASS, &certificate, sizeof (certificate) },
-		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_CLASS, (void *)&certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, (void *)&x509, sizeof (x509) },
 		{ CKA_INVALID }
 	};
 
@@ -1564,14 +1716,14 @@ replace_compat_for_ext (p11_builder *builder,
 {
 
 	CK_OBJECT_HANDLE *handles;
-	CK_ATTRIBUTE *id;
+	CK_ATTRIBUTE *public_key;
 	int i;
 
-	id = p11_attrs_find_valid (attrs, CKA_ID);
-	if (id == NULL)
+	public_key = p11_attrs_find_valid (attrs, CKA_PUBLIC_KEY_INFO);
+	if (public_key == NULL)
 		return;
 
-	handles = lookup_related (index, CKO_CERTIFICATE, id);
+	handles = lookup_related (index, CKO_CERTIFICATE, public_key);
 	for (i = 0; handles && handles[i] != 0; i++) {
 		attrs = p11_index_lookup (index, handles[i]);
 		replace_trust_and_assertions (builder, index, attrs);
@@ -1588,9 +1740,8 @@ update_related_category (p11_builder *builder,
 	CK_OBJECT_HANDLE *handles;
 	CK_ULONG categoryv = 0UL;
 	CK_ATTRIBUTE *update;
-	CK_ATTRIBUTE *value;
 	CK_ATTRIBUTE *cert;
-	CK_ATTRIBUTE *id;
+	CK_ATTRIBUTE *public_key;
 	CK_RV rv;
 	int i;
 
@@ -1599,18 +1750,17 @@ update_related_category (p11_builder *builder,
 		{ CKA_INVALID, },
 	};
 
-	id = p11_attrs_find_valid (attrs, CKA_ID);
-	if (id == NULL)
+	public_key = p11_attrs_find_valid (attrs, CKA_PUBLIC_KEY_INFO);
+	if (public_key == NULL)
 		return;
 
 	/* Find all other objects with this handle */
-	handles = lookup_related (index, CKO_CERTIFICATE, id);
+	handles = lookup_related (index, CKO_CERTIFICATE, public_key);
 
 	for (i = 0; handles && handles[i] != 0; i++) {
 		cert = p11_index_lookup (index, handle);
-		value = p11_attrs_find_valid (cert, CKA_VALUE);
 
-		if (calc_certificate_category (builder, index, id, value, &categoryv)) {
+		if (calc_certificate_category (builder, index, cert, public_key, &categoryv)) {
 			update = p11_attrs_build (NULL, &category, NULL);
 			rv = p11_index_update (index, handles[i], update);
 			return_if_fail (rv == CKR_OK);
@@ -1626,32 +1776,32 @@ p11_builder_changed (void *bilder,
                      CK_OBJECT_HANDLE handle,
                      CK_ATTRIBUTE *attrs)
 {
-	static CK_OBJECT_CLASS certificate = CKO_CERTIFICATE;
-	static CK_OBJECT_CLASS extension = CKO_X_CERTIFICATE_EXTENSION;
-	static CK_CERTIFICATE_TYPE x509 = CKC_X_509;
+	static const CK_OBJECT_CLASS certificate = CKO_CERTIFICATE;
+	static const CK_OBJECT_CLASS extension = CKO_X_CERTIFICATE_EXTENSION;
+	static const CK_CERTIFICATE_TYPE x509 = CKC_X_509;
 
-	static CK_ATTRIBUTE match_cert[] = {
-		{ CKA_CLASS, &certificate, sizeof (certificate) },
-		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+	static const CK_ATTRIBUTE match_cert[] = {
+		{ CKA_CLASS, (void *)&certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, (void *)&x509, sizeof (x509) },
 		{ CKA_INVALID }
 	};
 
-	static CK_ATTRIBUTE match_eku[] = {
-		{ CKA_CLASS, &extension, sizeof (extension) },
+	static const CK_ATTRIBUTE match_eku[] = {
+		{ CKA_CLASS, (void *)&extension, sizeof (extension) },
 		{ CKA_OBJECT_ID, (void *)P11_OID_EXTENDED_KEY_USAGE,
 		  sizeof (P11_OID_EXTENDED_KEY_USAGE) },
 		{ CKA_INVALID }
 	};
 
-	static CK_ATTRIBUTE match_ku[] = {
-		{ CKA_CLASS, &extension, sizeof (extension) },
+	static const CK_ATTRIBUTE match_ku[] = {
+		{ CKA_CLASS, (void *)&extension, sizeof (extension) },
 		{ CKA_OBJECT_ID, (void *)P11_OID_KEY_USAGE,
 		  sizeof (P11_OID_KEY_USAGE) },
 		{ CKA_INVALID }
 	};
 
-	static CK_ATTRIBUTE match_bc[] = {
-		{ CKA_CLASS, &extension, sizeof (extension) },
+	static const CK_ATTRIBUTE match_bc[] = {
+		{ CKA_CLASS, (void *)&extension, sizeof (extension) },
 		{ CKA_OBJECT_ID, (void *)P11_OID_BASIC_CONSTRAINTS,
 		  sizeof (P11_OID_BASIC_CONSTRAINTS) },
 		{ CKA_INVALID }
@@ -1667,7 +1817,7 @@ p11_builder_changed (void *bilder,
 	 * Treat these operations as loading, not modifying/creating, so we get
 	 * around many of the rules that govern object creation
 	 */
-	p11_index_batch (index);
+	p11_index_load (index);
 
 	/* A certificate */
 	if (p11_attrs_match (attrs, match_cert)) {

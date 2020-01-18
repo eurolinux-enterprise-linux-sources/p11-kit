@@ -38,6 +38,7 @@
 #include "config.h"
 
 #include <sys/types.h>
+#include <sys/stat.h>
 
 #ifdef _GNU_SOURCE
 #error Make the crap stop. _GNU_SOURCE is completely unportable and breaks all sorts of behavior
@@ -111,6 +112,8 @@ char *       strdup_path_mangle (const char *template);
 #define WIN32_LEAN_AND_MEAN 1
 #include <windows.h>
 
+#include <io.h>
+
 /* Oh ... my ... god */
 #undef CreateMutex
 
@@ -143,12 +146,12 @@ typedef HMODULE dl_module_t;
 
 #define p11_dl_open(f) \
 	(LoadLibrary (f))
-#define p11_dl_close(d) \
-	(FreeLibrary (d))
 #define p11_dl_symbol(d, s) \
 	((void *)GetProcAddress ((d), (s)))
 
 char *    p11_dl_error       (void);
+
+void      p11_dl_close       (void * dl);
 
 #define p11_sleep_ms(ms) \
 	(Sleep (ms))
@@ -156,6 +159,7 @@ char *    p11_dl_error       (void);
 typedef struct _p11_mmap p11_mmap;
 
 p11_mmap *  p11_mmap_open   (const char *path,
+                             struct stat *sb,
                              void **data,
                              size_t *size);
 
@@ -172,6 +176,7 @@ void        p11_mmap_close  (p11_mmap *map);
 #include <pthread.h>
 #include <dlfcn.h>
 #include <time.h>
+#include <unistd.h>
 
 typedef pthread_mutex_t p11_mutex_t;
 
@@ -217,6 +222,7 @@ char * p11_dl_error (void);
 typedef struct _p11_mmap p11_mmap;
 
 p11_mmap *  p11_mmap_open   (const char *path,
+                             struct stat *sb,
                              void **data,
                              size_t *size);
 
@@ -311,8 +317,6 @@ unsigned long     getauxval (unsigned long type);
 
 #endif /* !HAVE_GETAUXVAL */
 
-#endif /* __COMPAT_H__ */
-
 #ifndef HAVE_STRERROR_R
 
 int         strerror_r      (int errnum,
@@ -320,3 +324,5 @@ int         strerror_r      (int errnum,
                              size_t buflen);
 
 #endif /* HAVE_STRERROR_R */
+
+#endif /* __COMPAT_H__ */

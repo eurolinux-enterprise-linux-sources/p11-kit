@@ -78,6 +78,9 @@ $ make install
 <p>In addition p11-kit has several optional dependencies. If these are not available
 			during the build, then certain features will be disabled.</p>
 <div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p><span class="command"><strong>libffi</strong></span> for sharing of PKCS#11 modules
+				between multiple callers in the same process. It is highly recommended that
+				this dependency be treated as a required dependency.</p></li>
 <li class="listitem"><p><span class="command"><strong>gtk-doc</strong></span> is required to build the reference
 				manual. Use <code class="literal">--enable-doc</code> to control this
 				dependency.</p></li>
@@ -86,6 +89,10 @@ $ make install
 				dependency.</p></li>
 <li class="listitem"><p><span class="command"><strong>libtasn1</strong></span> is required to build the trust
 				module and code that interacts with certificates.</p></li>
+<li class="listitem"><p><span class="command"><strong>freebl3</strong></span> (developed as part of the NSS
+				code base) is an optional dependency that may be used to meet policy
+				requirements of system builders. Enabling this dependency provides no other
+				advantage.</p></li>
 </ul></div>
 </div>
 <div class="section">

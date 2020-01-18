@@ -33,7 +33,7 @@
  */
 
 #include "config.h"
-#include "CuTest.h"
+#include "test.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -43,126 +43,37 @@
 
 #include "hash.h"
 
-const char *sha1_input[] = {
-	"abc",
-	"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
-	NULL
-};
-
-const char *sha1_checksum[] = {
-	"\xA9\x99\x3E\x36\x47\x06\x81\x6A\xBA\x3E\x25\x71\x78\x50\xC2\x6C\x9C\xD0\xD8\x9D",
-	"\x84\x98\x3E\x44\x1C\x3B\xD2\x6E\xBA\xAE\x4A\xA1\xF9\x51\x29\xE5\xE5\x46\x70\xF1",
-	NULL
-};
-
 static void
-test_sha1 (CuTest *cu)
-{
-	unsigned char checksum[P11_HASH_SHA1_LEN];
-	size_t len;
-	int i;
-
-	for (i = 0; sha1_input[i] != NULL; i++) {
-		memset (checksum, 0, sizeof (checksum));
-		len = strlen (sha1_input[i]);
-
-		p11_hash_sha1 (checksum, sha1_input[i], len, NULL);
-		CuAssertTrue (cu, memcmp (sha1_checksum[i], checksum, P11_HASH_SHA1_LEN) == 0);
-
-		if (len > 6) {
-			p11_hash_sha1 (checksum, sha1_input[i], 6, sha1_input[i] + 6, len - 6, NULL);
-			CuAssertTrue (cu, memcmp (sha1_checksum[i], checksum, P11_HASH_SHA1_LEN) == 0);
-		}
-	}
-}
-
-static void
-test_sha1_long (CuTest *cu)
-{
-	unsigned char checksum[P11_HASH_SHA1_LEN];
-	char *expected = "\x34\xAA\x97\x3C\xD4\xC4\xDA\xA4\xF6\x1E\xEB\x2B\xDB\xAD\x27\x31\x65\x34\x01\x6F";
-	char *input;
-
-	input = malloc (1000000);
-	CuAssertTrue (cu, input != NULL);
-	memset (input, 'a', 1000000);
-
-	p11_hash_sha1 (checksum, input, (size_t)1000000, NULL);
-	CuAssertTrue (cu, memcmp (expected, checksum, P11_HASH_SHA1_LEN) == 0);
-
-	free (input);
-}
-
-const char *md5_input[] = {
-	"",
-	"a",
-	"abc",
-	"message digest",
-	"abcdefghijklmnopqrstuvwxyz",
-	NULL
-};
-
-const char *md5_checksum[] = {
-	"\xd4\x1d\x8c\xd9\x8f\x00\xb2\x04\xe9\x80\x09\x98\xec\xf8\x42\x7e",
-	"\x0c\xc1\x75\xb9\xc0\xf1\xb6\xa8\x31\xc3\x99\xe2\x69\x77\x26\x61",
-	"\x90\x01\x50\x98\x3c\xd2\x4f\xb0\xd6\x96\x3f\x7d\x28\xe1\x7f\x72",
-	"\xf9\x6b\x69\x7d\x7c\xb7\x93\x8d\x52\x5a\x2f\x31\xaa\xf1\x61\xd0",
-	"\xc3\xfc\xd3\xd7\x61\x92\xe4\x00\x7d\xfb\x49\x6c\xca\x67\xe1\x3b",
-	NULL
-};
-
-static void
-test_md5 (CuTest *cu)
-{
-	unsigned char checksum[P11_HASH_MD5_LEN];
-	size_t len;
-	int i;
-
-	for (i = 0; md5_input[i] != NULL; i++) {
-		memset (checksum, 0, sizeof (checksum));
-		len = strlen (md5_input[i]);
-
-		p11_hash_md5 (checksum, md5_input[i], len, NULL);
-		CuAssertTrue (cu, memcmp (md5_checksum[i], checksum, P11_HASH_MD5_LEN) == 0);
-
-		if (len > 5) {
-			p11_hash_md5 (checksum, md5_input[i], 5, md5_input[i] + 5, len - 5, NULL);
-			CuAssertTrue (cu, memcmp (md5_checksum[i], checksum, P11_HASH_MD5_LEN) == 0);
-		}
-	}
-}
-
-static void
-test_murmur2 (CuTest *cu)
+test_murmur3 (void)
 {
 	uint32_t one, two, four, seven, eleven, split;
 
 	assert (sizeof (one) == P11_HASH_MURMUR3_LEN);
 
-	p11_hash_murmur3 ((unsigned char *)&one, "one", (size_t)3, NULL);
-	p11_hash_murmur3 ((unsigned char *)&two, "two", (size_t)3, NULL);
-	p11_hash_murmur3 ((unsigned char *)&four, "four", (size_t)4, NULL);
-	p11_hash_murmur3 ((unsigned char *)&seven, "seven", (size_t)5, NULL);
-	p11_hash_murmur3 ((unsigned char *)&eleven, "eleven", (size_t)6, NULL);
-	p11_hash_murmur3 ((unsigned char *)&split, "ele", (size_t)3, "ven", (size_t)3, NULL);
+	p11_hash_murmur3 ((unsigned char *)&one, "one", 3, NULL);
+	p11_hash_murmur3 ((unsigned char *)&two, "two", 3, NULL);
+	p11_hash_murmur3 ((unsigned char *)&four, "four", 4, NULL);
+	p11_hash_murmur3 ((unsigned char *)&seven, "seven", 5, NULL);
+	p11_hash_murmur3 ((unsigned char *)&eleven, "eleven", 6, NULL);
+	p11_hash_murmur3 ((unsigned char *)&split, "ele", 3, "ven", 3, NULL);
 
-	CuAssertTrue (cu, one != two);
-	CuAssertTrue (cu, one != four);
-	CuAssertTrue (cu, one != seven);
-	CuAssertTrue (cu, one != eleven);
+	assert (one != two);
+	assert (one != four);
+	assert (one != seven);
+	assert (one != eleven);
 
-	CuAssertTrue (cu, two != four);
-	CuAssertTrue (cu, two != seven);
-	CuAssertTrue (cu, two != eleven);
+	assert (two != four);
+	assert (two != seven);
+	assert (two != eleven);
 
-	CuAssertTrue (cu, four != seven);
-	CuAssertTrue (cu, four != eleven);
+	assert (four != seven);
+	assert (four != eleven);
 
-	CuAssertTrue (cu, split == eleven);
+	assert (split == eleven);
 }
 
 static void
-test_murmur2_incr (CuTest *cu)
+test_murmur3_incr (void)
 {
 	uint32_t first, second;
 
@@ -182,29 +93,14 @@ test_murmur2_incr (CuTest *cu)
 	                  "!", (size_t)1,
 	                  NULL);
 
-	CuAssertIntEquals (cu, first, second);
+	assert_num_eq (first, second);
 }
 
 int
-main (void)
+main (int argc,
+      char *argv[])
 {
-	CuString *output = CuStringNew ();
-	CuSuite* suite = CuSuiteNew ();
-	int ret;
-
-	SUITE_ADD_TEST (suite, test_sha1);
-	SUITE_ADD_TEST (suite, test_sha1_long);
-	SUITE_ADD_TEST (suite, test_md5);
-	SUITE_ADD_TEST (suite, test_murmur2);
-	SUITE_ADD_TEST (suite, test_murmur2_incr);
-
-	CuSuiteRun (suite);
-	CuSuiteSummary (suite, output);
-	CuSuiteDetails (suite, output);
-	printf ("%s\n", output->buffer);
-	ret = suite->failCount;
-	CuSuiteDelete (suite);
-	CuStringDelete (output);
-
-	return ret;
+	p11_test (test_murmur3, "/hash/murmur3");
+	p11_test (test_murmur3_incr, "/hash/murmur3-incr");
+	return p11_test_run (argc, argv);
 }

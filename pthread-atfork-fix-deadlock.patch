@@ -1,0 +1,421 @@
+From 0ecc141f372b375ddd2087a8ca406797976f03bf Mon Sep 17 00:00:00 2001
+From: Stef Walter <stefw@redhat.com>
+Date: Fri, 3 Oct 2014 09:42:27 +0200
+Subject: [PATCH] p11-kit: Use pthread_atfork() in a safe manner
+
+Instead of trying to perform actions in pthread_atfork() which
+are not async-signal-safe, just increment a counter so we can
+later tell if the process has forked.
+
+Note this does not make it safe to mix threads and forking without
+immediately execing. This is a far broader problem that p11-kit,
+however we now do the right thing when fork+exec is used from a
+thread.
+
+https://bugs.freedesktop.org/show_bug.cgi?id=84567
+---
+ common/library.c           | 11 ++++++++
+ common/library.h           |  2 ++
+ common/mock.c              |  1 +
+ p11-kit/modules.c          | 55 +++++++++-------------------------------
+ p11-kit/proxy.c            | 62 ++++++++++++++--------------------------------
+ p11-kit/proxy.h            |  2 --
+ p11-kit/tests/test-proxy.c |  2 +-
+ 7 files changed, 46 insertions(+), 89 deletions(-)
+
+diff --git a/common/library.c b/common/library.c
+index b7d6923..502ea98 100644
+--- a/common/library.c
++++ b/common/library.c
+@@ -63,6 +63,8 @@ p11_mutex_t p11_library_mutex;
+ pthread_once_t p11_library_once = PTHREAD_ONCE_INIT;
+ #endif
+ 
++unsigned int p11_forkid = 1;
++
+ static char *
+ thread_local_message (void)
+ {
+@@ -103,6 +105,13 @@ _p11_library_get_thread_local (void)
+ 	return local;
+ }
+ 
++static void
++count_forks (void)
++{
++	/* Thread safe, executed in child, one thread exists */
++	p11_forkid++;
++}
++
+ void
+ p11_library_init_impl (void)
+ {
+@@ -111,6 +120,8 @@ p11_library_init_impl (void)
+ 	p11_mutex_init (&p11_library_mutex);
+ 	pthread_key_create (&thread_local, free);
+ 	p11_message_storage = thread_local_message;
++
++	pthread_atfork (NULL, NULL, count_forks);
+ }
+ 
+ void
+diff --git a/common/library.h b/common/library.h
+index 33a33fb..f87494d 100644
+--- a/common/library.h
++++ b/common/library.h
+@@ -44,6 +44,8 @@
+ 
+ extern p11_mutex_t p11_library_mutex;
+ 
++extern unsigned int p11_forkid;
++
+ #define       p11_lock()                   p11_mutex_lock (&p11_library_mutex);
+ 
+ #define       p11_unlock()                 p11_mutex_unlock (&p11_library_mutex);
+diff --git a/common/mock.c b/common/mock.c
+index 51b32b6..ed2fad6 100644
+--- a/common/mock.c
++++ b/common/mock.c
+@@ -46,6 +46,7 @@
+ #include "debug.h"
+ #include "dict.h"
+ #include "array.h"
++#include "library.h"
+ 
+ #include <assert.h>
+ #include <ctype.h>
+diff --git a/p11-kit/modules.c b/p11-kit/modules.c
+index 1d9fe61..4a84803 100644
+--- a/p11-kit/modules.c
++++ b/p11-kit/modules.c
+@@ -157,7 +157,7 @@ typedef struct _Module {
+ 
+ 	/* Initialization, mutex must be held */
+ 	p11_mutex_t initialize_mutex;
+-	bool initialize_called;
++	unsigned int initialize_called;
+ 	p11_thread_id_t initialize_thread;
+ } Module;
+ 
+@@ -239,7 +239,6 @@ free_module_unlocked (void *data)
+ 		p11_debug_precond ("module unloaded without C_Finalize having been "
+ 		                   "called for each C_Initialize");
+ 	} else {
+-		assert (!mod->initialize_called);
+ 		assert (mod->initialize_thread == 0);
+ 	}
+ 
+@@ -580,7 +579,7 @@ initialize_module_inlock_reentrant (Module *mod)
+ 	p11_unlock ();
+ 	p11_mutex_lock (&mod->initialize_mutex);
+ 
+-	if (!mod->initialize_called) {
++	if (mod->initialize_called != p11_forkid) {
+ 		p11_debug ("C_Initialize: calling");
+ 
+ 		rv = mod->virt.funcs.C_Initialize (&mod->virt.funcs,
+@@ -590,10 +589,12 @@ initialize_module_inlock_reentrant (Module *mod)
+ 
+ 		/* Module was initialized and C_Finalize should be called */
+ 		if (rv == CKR_OK)
+-			mod->initialize_called = true;
++			mod->initialize_called = p11_forkid;
++		else
++			mod->initialize_called = 0;
+ 
+ 		/* Module was already initialized, we don't call C_Finalize */
+-		else if (rv == CKR_CRYPTOKI_ALREADY_INITIALIZED)
++		if (rv == CKR_CRYPTOKI_ALREADY_INITIALIZED)
+ 			rv = CKR_OK;
+ 	}
+ 
+@@ -612,31 +613,6 @@ initialize_module_inlock_reentrant (Module *mod)
+ 	return rv;
+ }
+ 
+-#ifdef OS_UNIX
+-
+-static void
+-reinitialize_after_fork (void)
+-{
+-	p11_dictiter iter;
+-	Module *mod;
+-
+-	p11_debug ("forked");
+-
+-	p11_lock ();
+-
+-		if (gl.modules) {
+-			p11_dict_iterate (gl.modules, &iter);
+-			while (p11_dict_next (&iter, (void **)&mod, NULL))
+-				mod->initialize_called = false;
+-		}
+-
+-	p11_unlock ();
+-
+-	p11_proxy_after_fork ();
+-}
+-
+-#endif /* OS_UNIX */
+-
+ static CK_RV
+ init_globals_unlocked (void)
+ {
+@@ -666,9 +642,6 @@ init_globals_unlocked (void)
+ 	if (once)
+ 		return CKR_OK;
+ 
+-#ifdef OS_UNIX
+-	pthread_atfork (NULL, NULL, reinitialize_after_fork);
+-#endif
+ 	once = true;
+ 
+ 	return CKR_OK;
+@@ -724,9 +697,9 @@ finalize_module_inlock_reentrant (Module *mod)
+ 	p11_unlock ();
+ 	p11_mutex_lock (&mod->initialize_mutex);
+ 
+-	if (mod->initialize_called) {
++	if (mod->initialize_called == p11_forkid) {
+ 		mod->virt.funcs.C_Finalize (&mod->virt.funcs, NULL);
+-		mod->initialize_called = false;
++		mod->initialize_called = 0;
+ 	}
+ 
+ 	p11_mutex_unlock (&mod->initialize_mutex);
+@@ -1384,7 +1357,7 @@ cleanup:
+ typedef struct {
+ 	p11_virtual virt;
+ 	Module *mod;
+-	pid_t initialized;
++	unsigned int initialized;
+ 	p11_dict *sessions;
+ } Managed;
+ 
+@@ -1394,14 +1367,12 @@ managed_C_Initialize (CK_X_FUNCTION_LIST *self,
+ {
+ 	Managed *managed = ((Managed *)self);
+ 	p11_dict *sessions;
+-	pid_t pid;
+ 	CK_RV rv;
+ 
+ 	p11_debug ("in");
+ 	p11_lock ();
+ 
+-	pid = getpid ();
+-	if (managed->initialized == pid) {
++	if (managed->initialized == p11_forkid) {
+ 		rv = CKR_CRYPTOKI_ALREADY_INITIALIZED;
+ 
+ 	} else {
+@@ -1414,7 +1385,7 @@ managed_C_Initialize (CK_X_FUNCTION_LIST *self,
+ 			rv = initialize_module_inlock_reentrant (managed->mod);
+ 		if (rv == CKR_OK) {
+ 			managed->sessions = sessions;
+-			managed->initialized = pid;
++			managed->initialized = p11_forkid;
+ 		} else {
+ 			p11_dict_free (sessions);
+ 		}
+@@ -1515,18 +1486,16 @@ managed_C_Finalize (CK_X_FUNCTION_LIST *self,
+ {
+ 	Managed *managed = ((Managed *)self);
+ 	CK_SESSION_HANDLE *sessions;
+-	pid_t pid;
+ 	int count;
+ 	CK_RV rv;
+ 
+ 	p11_debug ("in");
+ 	p11_lock ();
+ 
+-	pid = getpid ();
+ 	if (managed->initialized == 0) {
+ 		rv = CKR_CRYPTOKI_NOT_INITIALIZED;
+ 
+-	} else if (managed->initialized != pid) {
++	} else if (managed->initialized != p11_forkid) {
+ 		/*
+ 		 * In theory we should be returning CKR_CRYPTOKI_NOT_INITIALIZED here
+ 		 * but enough callers are not completely aware of their forking.
+diff --git a/p11-kit/proxy.c b/p11-kit/proxy.c
+index 3e76f15..db2acb8 100644
+--- a/p11-kit/proxy.c
++++ b/p11-kit/proxy.c
+@@ -82,6 +82,7 @@ typedef struct {
+ 	unsigned int n_mappings;
+ 	p11_dict *sessions;
+ 	CK_FUNCTION_LIST **inited;
++	unsigned int forkid;
+ } Proxy;
+ 
+ typedef struct _State {
+@@ -96,6 +97,8 @@ static CK_FUNCTION_LIST **all_modules = NULL;
+ static State *all_instances = NULL;
+ static State global = { { { { -1, -1 }, NULL, }, }, NULL, NULL, FIRST_HANDLE, NULL };
+ 
++#define PROXY_VALID(px) ((px) && (px)->forkid == p11_forkid)
++
+ #define MANUFACTURER_ID         "PKCS#11 Kit                     "
+ #define LIBRARY_DESCRIPTION     "PKCS#11 Kit Proxy Module        "
+ #define LIBRARY_VERSION_MAJOR   1
+@@ -137,7 +140,7 @@ map_slot_to_real (Proxy *px,
+ 
+ 	p11_lock ();
+ 
+-		if (!px)
++		if (!PROXY_VALID (px))
+ 			rv = CKR_CRYPTOKI_NOT_INITIALIZED;
+ 		else
+ 			rv = map_slot_unlocked (px, *slot, mapping);
+@@ -163,7 +166,7 @@ map_session_to_real (Proxy *px,
+ 
+ 	p11_lock ();
+ 
+-		if (!px) {
++		if (!PROXY_VALID (px)) {
+ 			rv = CKR_CRYPTOKI_NOT_INITIALIZED;
+ 		} else {
+ 			assert (px->sessions);
+@@ -195,40 +198,6 @@ proxy_free (Proxy *py)
+ 	}
+ }
+ 
+-void
+-p11_proxy_after_fork (void)
+-{
+-	p11_array *array;
+-	State *state;
+-	unsigned int i;
+-
+-	/*
+-	 * After a fork the callers are supposed to call C_Initialize and all.
+-	 * In addition the underlying libraries may change their state so free
+-	 * up any mappings and all
+-	 */
+-
+-	array = p11_array_new (NULL);
+-
+-	p11_lock ();
+-
+-		if (global.px)
+-			p11_array_push (array, global.px);
+-		global.px = NULL;
+-
+-		for (state = all_instances; state != NULL; state = state->next) {
+-			if (state->px)
+-				p11_array_push (array, state->px);
+-			state->px = NULL;
+-		}
+-
+-	p11_unlock ();
+-
+-	for (i = 0; i < array->num; i++)
+-		proxy_free (array->elem[i]);
+-	p11_array_free (array);
+-}
+-
+ static CK_RV
+ proxy_C_Finalize (CK_X_FUNCTION_LIST *self,
+                   CK_VOID_PTR reserved)
+@@ -247,8 +216,10 @@ proxy_C_Finalize (CK_X_FUNCTION_LIST *self,
+ 	} else {
+ 		p11_lock ();
+ 
+-			if (!state->px) {
++			if (!PROXY_VALID (state->px)) {
+ 				rv = CKR_CRYPTOKI_NOT_INITIALIZED;
++				py = state->px;
++				state->px = NULL;
+ 			} else if (state->px->refs-- == 1) {
+ 				py = state->px;
+ 				state->px = NULL;
+@@ -287,6 +258,8 @@ proxy_create (Proxy **res)
+ 	py = calloc (1, sizeof (Proxy));
+ 	return_val_if_fail (py != NULL, CKR_HOST_MEMORY);
+ 
++	py->forkid = p11_forkid;
++
+ 	py->inited = modules_dup (all_modules);
+ 	return_val_if_fail (py->inited != NULL, CKR_HOST_MEMORY);
+ 
+@@ -357,10 +330,13 @@ proxy_C_Initialize (CK_X_FUNCTION_LIST *self,
+ 
+ 	p11_lock ();
+ 
+-		if (state->px == NULL)
++		if (!PROXY_VALID (state->px)) {
+ 			initialize = true;
+-		else
++			proxy_free (state->px);
++			state->px = NULL;
++		} else {
+ 			state->px->refs++;
++		}
+ 
+ 	p11_unlock ();
+ 
+@@ -402,7 +378,7 @@ proxy_C_GetInfo (CK_X_FUNCTION_LIST *self,
+ 
+ 	p11_lock ();
+ 
+-		if (!state->px)
++		if (!PROXY_VALID (state->px))
+ 			rv = CKR_CRYPTOKI_NOT_INITIALIZED;
+ 
+ 	p11_unlock ();
+@@ -438,7 +414,7 @@ proxy_C_GetSlotList (CK_X_FUNCTION_LIST *self,
+ 
+ 	p11_lock ();
+ 
+-		if (!state->px) {
++		if (!PROXY_VALID (state->px)) {
+ 			rv = CKR_CRYPTOKI_NOT_INITIALIZED;
+ 		} else {
+ 			index = 0;
+@@ -586,7 +562,7 @@ proxy_C_OpenSession (CK_X_FUNCTION_LIST *self,
+ 	if (rv == CKR_OK) {
+ 		p11_lock ();
+ 
+-			if (!state->px) {
++			if (!PROXY_VALID (state->px)) {
+ 				/*
+ 				 * The underlying module should have returned an error, so this
+ 				 * code should never be reached with properly behaving modules.
+@@ -650,7 +626,7 @@ proxy_C_CloseAllSessions (CK_X_FUNCTION_LIST *self,
+ 
+ 	p11_lock ();
+ 
+-		if (!state->px) {
++		if (!PROXY_VALID (state->px)) {
+ 			rv = CKR_CRYPTOKI_NOT_INITIALIZED;
+ 		} else {
+ 			assert (state->px->sessions != NULL);
+diff --git a/p11-kit/proxy.h b/p11-kit/proxy.h
+index df05be0..f3d56d7 100644
+--- a/p11-kit/proxy.h
++++ b/p11-kit/proxy.h
+@@ -35,8 +35,6 @@
+ #ifndef __P11_PROXY_H__
+ #define __P11_PROXY_H__
+ 
+-void       p11_proxy_after_fork                      (void);
+-
+ bool       p11_proxy_module_check                    (CK_FUNCTION_LIST_PTR module);
+ 
+ void       p11_proxy_module_cleanup                  (void);
+diff --git a/p11-kit/tests/test-proxy.c b/p11-kit/tests/test-proxy.c
+index bf5007d..e4998be 100644
+--- a/p11-kit/tests/test-proxy.c
++++ b/p11-kit/tests/test-proxy.c
+@@ -76,7 +76,7 @@ test_initialize_finalize (void)
+ 	assert (rv == CKR_OK);
+ 
+ 	rv = proxy->C_Finalize (NULL);
+-	assert (rv == CKR_OK);
++	assert_num_eq (rv, CKR_OK);
+ 
+ 	p11_proxy_module_cleanup ();
+ }
+-- 
+1.9.3
+

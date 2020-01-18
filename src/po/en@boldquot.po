@@ -1,7 +1,7 @@
 # English translations for p11-kit package.
-# Copyright (C) 2013 Collabora Ltd.
+# Copyright (C) 2014 Collabora Ltd.
 # This file is distributed under the same license as the p11-kit package.
-# Automatically generated, 2013.
+# Automatically generated, 2014.
 #
 # All this catalog "translates" are quotation characters.
 # The msgids must be ASCII and therefore cannot contain real quotation
@@ -30,11 +30,11 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: p11-kit 0.18.7\n"
+"Project-Id-Version: p11-kit 0.20.7\n"
 "Report-Msgid-Bugs-To: https://bugs.freedesktop.org/enter_bug.cgi?product=p11-"
 "glue\n"
-"POT-Creation-Date: 2013-10-14 14:23+0200\n"
-"PO-Revision-Date: 2013-10-14 14:23+0200\n"
+"POT-Creation-Date: 2014-09-18 09:20+0200\n"
+"PO-Revision-Date: 2014-09-18 09:20+0200\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: en@boldquot\n"
@@ -360,8 +360,8 @@ msgid "The data cannot be locked"
 msgstr "The data cannot be locked"
 
 #: p11-kit/messages.c:237
-msgid "The signature request was rejected by the user"
-msgstr "The signature request was rejected by the user"
+msgid "The request was rejected by the user"
+msgstr "The request was rejected by the user"
 
 #: p11-kit/messages.c:240
 msgid "Unknown error"

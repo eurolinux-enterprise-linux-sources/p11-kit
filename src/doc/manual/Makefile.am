@@ -52,44 +52,52 @@ IGNORE_HFILES= \
 	conf.h \
 	debug.h \
 	dict.h \
-	mock-module.h \
+	log.h \
+	mock.h \
+	modules.h \
 	pkcs11.h \
+	pkcs11i.h \
 	pkcs11x.h \
 	private.h \
+	proxy.h \
 	util.h \
+	virtual.h \
 	array.h \
 	compat.h \
-	mock-module.h
+	$(NULL)
 
 # Images to copy into HTML directory.
 # e.g. HTML_IMAGES=$(top_srcdir)/gtk/stock-icons/stock_about_24.png
 HTML_IMAGES=
 
+generate_files= \
+	version.xml \
+	userdir.xml \
+	sysdir.xml \
+	$(NULL)
+
 # Extra SGML files that are included by $(DOC_MAIN_SGML_FILE).
 # e.g. content_files=running.sgml building.sgml changes-2.0.sgml
 content_files=p11-kit-config.xml p11-kit-sharing.xml \
 	p11-kit-devel.xml \
+	p11-kit-proxy.xml \
 	p11-kit-trust.xml \
 	p11-kit.xml \
 	pkcs11.conf.xml \
+	trust.xml \
 	annotation-glossary.xml \
 	$(NULL)
 
 # SGML files where gtk-doc abbrevations (#GtkWidget) are expanded
 # These files must be listed here *and* in content_files
 # e.g. expand_content_files=running.sgml
-expand_content_files= \
-	version.xml \
-	userdir.xml \
-	sysdir.xml \
-	$(NULL)
+expand_content_files= $(generate_files)
 
 # CFLAGS and LDFLAGS for compiling gtkdoc-scangobj with your library.
 # Only needed if you are using gtkdoc-scangobj to dynamically query widget
 # signals and properties.
 # e.g. INCLUDES=-I$(top_srcdir) -I$(top_builddir) $(GTK_DEBUG_FLAGS)
 # e.g. GTKDOC_LIBS=$(top_builddir)/gtk/$(gtktargetlib)
-INCLUDES=
 GTKDOC_LIBS=
 
 # Hacks around gtk-doc brokenness for out of tree builds
@@ -100,16 +108,17 @@ p11-kit-overrides.txt: $(srcdir)/p11-kit-overrides.txt
 
 # Generate our files with variables
 sysdir.xml:
-	echo -n $(p11_system_config) > "$@"
+	$(AM_V_GEN) echo -n $(p11_system_config) > "$@"
 userdir.xml:
-	echo -n $(p11_user_config) > "$@"
+	$(AM_V_GEN) echo -n $(p11_user_config) > "$@"
 version.xml:
-	echo -n $(VERSION) > "$@"
+	$(AM_V_GEN) echo -n $(VERSION) > "$@"
 
 # This includes the standard gtk-doc make rules, copied by gtkdocize.
-include $(top_srcdir)/gtk-doc.make
+include $(top_srcdir)/build/gtk-doc.make
 
 if ENABLE_GTK_DOC
+man1_MANS = trust.1
 man8_MANS = p11-kit.8
 man5_MANS = pkcs11.conf.5
 
@@ -122,15 +131,19 @@ XSLTPROC_FLAGS = \
         --stringparam man.copyright.section.enabled 0
 
 XSLTPROC_MAN = \
-	$(XSLTPROC) $(XSLTPROC_FLAGS) http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl
+	$(XSLTPROC) $(XSLTPROC_FLAGS) --path $(builddir) \
+	http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl
 
-.xml.5:
+trust.1: trust.xml $(generate_files)
 	$(AM_V_GEN) $(XSLTPROC_MAN) $<
-.xml.8:
+pkcs11.conf.5: pkcs11.conf.xml $(generate_files)
+	$(AM_V_GEN) $(XSLTPROC_MAN) $<
+p11-kit.8: p11-kit.xml $(generate_files)
 	$(AM_V_GEN) $(XSLTPROC_MAN) $<
 
 else # ENABLE_GTK_DOC
 
+man1_MANS =
 man5_MANS =
 man8_MANS =
 
@@ -139,9 +152,11 @@ endif # ENABLE_GTK_DOC
 MAN_IN_FILES = \
 	$(man8_MANS:.8=.xml) \
 	$(man5_MANS:.5=.xml) \
+	$(man1_MANS:.1=.xml) \
 	$(NULL)
 
 CLEANFILES += \
+	$(man1_MANS) \
 	$(man5_MANS) \
 	$(man8_MANS) \
 	$(NULL)

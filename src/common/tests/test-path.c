@@ -33,7 +33,7 @@
  */
 
 #include "config.h"
-#include "CuTest.h"
+#include "test.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -43,7 +43,7 @@
 #include "path.h"
 
 static void
-test_base (CuTest *tc)
+test_base (void)
 {
 	struct {
 		const char *in;
@@ -70,118 +70,147 @@ test_base (CuTest *tc)
 
 	for (i = 0; fixtures[i].in != NULL; i++) {
 		out = p11_path_base (fixtures[i].in);
-		CuAssertStrEquals (tc, fixtures[i].out, out);
+		assert_str_eq (fixtures[i].out, out);
 		free (out);
 	}
 }
 
-static void
-check_equals_and_free_msg (CuTest *tc,
-                           const char *file,
-                           int line,
-                           const char *ex,
-                           char *ac)
-{
-	CuAssertStrEquals_LineMsg (tc, file, line, NULL, ex, ac);
-	free (ac);
-}
-
-#define check_equals_and_free(tc, ex, ac) \
-	check_equals_and_free_msg ((tc), __FILE__, __LINE__, (ex), (ac))
+#define assert_str_eq_free(ex, ac) \
+	do { const char *__s1 = (ex); \
+	     char *__s2 = (ac); \
+	     if (__s1 && __s2 && strcmp (__s1, __s2) == 0) ; else \
+	         p11_test_fail (__FILE__, __LINE__, __FUNCTION__, "assertion failed (%s == %s): (%s == %s)", \
+	                        #ex, #ac, __s1 ? __s1 : "(null)", __s2 ? __s2 : "(null)"); \
+	     free (__s2); \
+	} while (0)
 
 static void
-test_build (CuTest *tc)
+test_build (void)
 {
 #ifdef OS_UNIX
-	check_equals_and_free (tc, "/root/second",
-	                       p11_path_build ("/root", "second", NULL));
-	check_equals_and_free (tc, "/root/second",
-	                       p11_path_build ("/root", "/second", NULL));
-	check_equals_and_free (tc, "/root/second",
-	                       p11_path_build ("/root/", "second", NULL));
-	check_equals_and_free (tc, "/root/second/third",
-	                       p11_path_build ("/root", "second", "third", NULL));
-	check_equals_and_free (tc, "/root/second/third",
-	                       p11_path_build ("/root", "/second/third", NULL));
+	assert_str_eq_free ("/root/second",
+	                    p11_path_build ("/root", "second", NULL));
+	assert_str_eq_free ("/root/second",
+	                    p11_path_build ("/root", "/second", NULL));
+	assert_str_eq_free ("/root/second",
+	                    p11_path_build ("/root/", "second", NULL));
+	assert_str_eq_free ("/root/second/third",
+	                    p11_path_build ("/root", "second", "third", NULL));
+	assert_str_eq_free ("/root/second/third",
+	                    p11_path_build ("/root", "/second/third", NULL));
 #else /* OS_WIN32 */
-	check_equals_and_free (tc, "C:\\root\\second",
-	                       p11_path_build ("C:\\root", "second", NULL));
-	check_equals_and_free (tc, "C:\\root\\second",
-	                       p11_path_build ("C:\\root", "\\second", NULL));
-	check_equals_and_free (tc, "C:\\root\\second",
-	                       p11_path_build ("C:\\root\\", "second", NULL));
-	check_equals_and_free (tc, "C:\\root\\second\\third",
-	                       p11_path_build ("C:\\root", "second", "third", NULL));
-	check_equals_and_free (tc, "C:\\root\\second/third",
-	                       p11_path_build ("C:\\root", "second/third", NULL));
+	assert_str_eq_free ("C:\\root\\second",
+	                    p11_path_build ("C:\\root", "second", NULL));
+	assert_str_eq_free ("C:\\root\\second",
+	                    p11_path_build ("C:\\root", "\\second", NULL));
+	assert_str_eq_free ("C:\\root\\second",
+	                    p11_path_build ("C:\\root\\", "second", NULL));
+	assert_str_eq_free ("C:\\root\\second\\third",
+	                    p11_path_build ("C:\\root", "second", "third", NULL));
+	assert_str_eq_free ("C:\\root\\second/third",
+	                    p11_path_build ("C:\\root", "second/third", NULL));
 #endif
 }
 
 static void
-test_expand (CuTest *tc)
+test_expand (void)
 {
 	char *path;
 
 #ifdef OS_UNIX
 	putenv ("HOME=/home/blah");
-	check_equals_and_free (tc, "/home/blah/my/path",
-	                       p11_path_expand ("~/my/path"));
-	check_equals_and_free (tc, "/home/blah",
-	                       p11_path_expand ("~"));
-	check_equals_and_free (tc, "/home/blah",
-	                       p11_path_expand ("~///"));
+	assert_str_eq_free ("/home/blah/my/path",
+	                    p11_path_expand ("~/my/path"));
+	assert_str_eq_free ("/home/blah",
+	                    p11_path_expand ("~"));
 	putenv ("XDG_CONFIG_HOME=/my");
-	check_equals_and_free (tc, "/my/path",
-	                       p11_path_expand ("~/.config/path"));
+	assert_str_eq_free ("/my/path",
+	                    p11_path_expand ("~/.config/path"));
 	putenv ("XDG_CONFIG_HOME=");
-	check_equals_and_free (tc, "/home/blah/.config/path",
-	                       p11_path_expand ("~/.config/path"));
+	assert_str_eq_free ("/home/blah/.config/path",
+	                    p11_path_expand ("~/.config/path"));
 #else /* OS_WIN32 */
 	putenv ("HOME=C:\\Users\\blah");
-	check_equals_and_free (tc, "C:\\Users\\blah\\path",
-	                       p11_path_expand ("~/path"));
-	check_equals_and_free (tc, "C:\\Users\\blah\\path",
-	                       p11_path_expand ("~\\path"));
+	assert_str_eq_free ("C:\\Users\\blah\\path",
+	                    p11_path_expand ("~/my/path"));
+	assert_str_eq_free ("C:\\Users\\blah\\path",
+	                    p11_path_expand ("~\\path"));
 #endif
 
 	putenv("HOME=");
 	path = p11_path_expand ("~/this/is/my/path");
-	CuAssertTrue (tc, strstr (path, "this/is/my/path") != NULL);
+	assert (strstr (path, "this/is/my/path") != NULL);
 	free (path);
 }
 
 static void
-test_absolute (CuTest *tc)
+test_absolute (void)
 {
 #ifdef OS_UNIX
-	CuAssertTrue (tc, p11_path_absolute ("/home"));
-	CuAssertTrue (tc, !p11_path_absolute ("home"));
+	assert (p11_path_absolute ("/home"));
+	assert (!p11_path_absolute ("home"));
 #else /* OS_WIN32 */
-	CuAssertTrue (tc, p11_path_absolute ("C:\\home"));
-	CuAssertTrue (tc, !p11_path_absolute ("home"));
-	CuAssertTrue (tc, !p11_path_absolute ("/home"));
+	assert (p11_path_absolute ("C:\\home"));
+	assert (!p11_path_absolute ("home"));
+	assert (p11_path_absolute ("/home"));
 #endif
 }
 
-int
-main (void)
+static void
+test_parent (void)
 {
-	CuString *output = CuStringNew ();
-	CuSuite* suite = CuSuiteNew ();
-	int ret;
+	assert_str_eq_free ("/", p11_path_parent ("/root"));
+	assert_str_eq_free ("/", p11_path_parent ("/root/"));
+	assert_str_eq_free ("/", p11_path_parent ("/root//"));
+	assert_str_eq_free ("/root", p11_path_parent ("/root/second"));
+	assert_str_eq_free ("/root", p11_path_parent ("/root//second"));
+	assert_str_eq_free ("/root", p11_path_parent ("/root//second//"));
+	assert_str_eq_free ("/root", p11_path_parent ("/root///second"));
+	assert_str_eq_free ("/root/second", p11_path_parent ("/root/second/test.file"));
+	assert_ptr_eq (NULL, p11_path_parent ("/"));
+	assert_ptr_eq (NULL, p11_path_parent ("//"));
+	assert_ptr_eq (NULL, p11_path_parent (""));
+}
 
-	SUITE_ADD_TEST (suite, test_base);
-	SUITE_ADD_TEST (suite, test_build);
-	SUITE_ADD_TEST (suite, test_expand);
-	SUITE_ADD_TEST (suite, test_absolute);
+static void
+test_prefix (void)
+{
+	assert (p11_path_prefix ("/test/second", "/test"));
+	assert (!p11_path_prefix ("/test", "/test"));
+	assert (!p11_path_prefix ("/different/prefix", "/test"));
+	assert (!p11_path_prefix ("/te", "/test"));
+	assert (!p11_path_prefix ("/test", "/test/blah"));
+	assert (p11_path_prefix ("/test/other/second", "/test"));
+	assert (p11_path_prefix ("/test//other//second", "/test"));
+}
 
-	CuSuiteRun (suite);
-	CuSuiteSummary (suite, output);
-	CuSuiteDetails (suite, output);
-	printf ("%s\n", output->buffer);
-	ret = suite->failCount;
-	CuSuiteDelete (suite);
-	CuStringDelete (output);
+static void
+test_canon (void)
+{
+	char *test;
 
-	return ret;
+	test = strdup ("2309haonutb;AOE@#$O ");
+	p11_path_canon (test);
+	assert_str_eq (test, "2309haonutb_AOE___O_");
+	free (test);
+
+	test = strdup ("22@# %ATI@#$onot");
+	p11_path_canon (test);
+	assert_str_eq (test, "22____ATI___onot");
+	free (test);
+}
+
+int
+main (int argc,
+      char *argv[])
+{
+	p11_test (test_base, "/path/base");
+	p11_test (test_build, "/path/build");
+	p11_test (test_expand, "/path/expand");
+	p11_test (test_absolute, "/path/absolute");
+	p11_test (test_parent, "/path/parent");
+	p11_test (test_prefix, "/path/prefix");
+	p11_test (test_canon, "/path/canon");
+
+	return p11_test_run (argc, argv);
 }

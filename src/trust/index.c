@@ -77,6 +77,12 @@ struct _p11_index {
 	/* Called to build an new/modified object */
 	p11_index_build_cb build;
 
+	/* Called after each object ready to be stored */
+	p11_index_store_cb store;
+
+	/* Called after an object has been removed */
+	p11_index_remove_cb remove;
+
 	/* Called after objects change */
 	p11_index_notify_cb notify;
 
@@ -98,8 +104,46 @@ free_object (void *data)
 	free (obj);
 }
 
+static CK_RV
+default_build (void *data,
+               p11_index *index,
+               CK_ATTRIBUTE *attrs,
+               CK_ATTRIBUTE *merge,
+               CK_ATTRIBUTE **populate)
+{
+	return CKR_OK;
+}
+
+static CK_RV
+default_store (void *data,
+               p11_index *index,
+               CK_OBJECT_HANDLE handle,
+               CK_ATTRIBUTE **attrs)
+{
+	return CKR_OK;
+}
+
+static void
+default_notify (void *data,
+                p11_index *index,
+                CK_OBJECT_HANDLE handle,
+                CK_ATTRIBUTE *attrs)
+{
+
+}
+
+static CK_RV
+default_remove (void *data,
+                p11_index *index,
+                CK_ATTRIBUTE *attrs)
+{
+	return CKR_OK;
+}
+
 p11_index *
 p11_index_new (p11_index_build_cb build,
+               p11_index_store_cb store,
+               p11_index_remove_cb remove,
                p11_index_notify_cb notify,
                void *data)
 {
@@ -108,8 +152,19 @@ p11_index_new (p11_index_build_cb build,
 	index = calloc (1, sizeof (p11_index));
 	return_val_if_fail (index != NULL, NULL);
 
+	if (build == NULL)
+		build = default_build;
+	if (store == NULL)
+		store = default_store;
+	if (notify == NULL)
+		notify = default_notify;
+	if (remove == NULL)
+		remove = default_remove;
+
 	index->build = build;
+	index->store = store;
 	index->notify = notify;
+	index->remove = remove;
 	index->data = data;
 
 	index->objects = p11_dict_new (p11_dict_ulongptr_hash,
@@ -154,6 +209,7 @@ is_indexable (p11_index *index,
 	case CKA_VALUE:
 	case CKA_OBJECT_ID:
 	case CKA_ID:
+	case CKA_X_ORIGIN:
 		return true;
 	}
 
@@ -208,9 +264,9 @@ bucket_insert (index_bucket *bucket,
 		alloc = alloc ? alloc * 2 : 1;
 		return_if_fail (alloc != 0);
 		bucket->elem = realloc (bucket->elem, alloc * sizeof (CK_OBJECT_HANDLE));
-		return_if_fail (bucket->elem != NULL);
 	}
 
+	return_if_fail (bucket->elem != NULL);
 	memmove (bucket->elem + at + 1, bucket->elem + at,
 	         (bucket->num - at) * sizeof (CK_OBJECT_HANDLE));
 	bucket->elem[at] = handle;
@@ -228,9 +284,9 @@ bucket_push (index_bucket *bucket,
 		alloc = alloc ? alloc * 2 : 1;
 		return_val_if_fail (alloc != 0, false);
 		bucket->elem = realloc (bucket->elem, alloc * sizeof (CK_OBJECT_HANDLE));
-		return_val_if_fail (bucket->elem != NULL, false);
 	}
 
+	return_val_if_fail (bucket->elem != NULL, false);
 	bucket->elem[bucket->num++] = handle;
 	return true;
 }
@@ -250,17 +306,89 @@ index_hash (p11_index *index,
 	}
 }
 
+static void
+merge_attrs (CK_ATTRIBUTE *output,
+             CK_ULONG *noutput,
+             CK_ATTRIBUTE *merge,
+             CK_ULONG nmerge,
+             p11_array *to_free)
+{
+	CK_ULONG i;
+
+	for (i = 0; i < nmerge; i++) {
+		/* Already have this attribute? */
+		if (p11_attrs_findn (output, *noutput, merge[i].type)) {
+			p11_array_push (to_free, merge[i].pValue);
+
+		} else {
+			memcpy (output + *noutput, merge + i, sizeof (CK_ATTRIBUTE));
+			(*noutput)++;
+		}
+	}
+
+	/* Freeing the array itself */
+	p11_array_push (to_free, merge);
+}
+
 static CK_RV
 index_build (p11_index *index,
+             CK_OBJECT_HANDLE handle,
              CK_ATTRIBUTE **attrs,
              CK_ATTRIBUTE *merge)
 {
-	if (index->build) {
-		return index->build (index->data, index, attrs, merge);
+	CK_ATTRIBUTE *extra = NULL;
+	CK_ATTRIBUTE *built;
+	p11_array *stack = NULL;
+	CK_ULONG count;
+	CK_ULONG nattrs;
+	CK_ULONG nmerge;
+	CK_ULONG nextra;
+	CK_RV rv;
+	int i;
+
+	rv = index->build (index->data, index, *attrs, merge, &extra);
+	if (rv != CKR_OK)
+		return rv;
+
+	/* Short circuit when nothing to merge */
+	if (*attrs == NULL && extra == NULL) {
+		built = merge;
+		stack = NULL;
+
 	} else {
-		*attrs = p11_attrs_merge (*attrs, merge, true);
-		return CKR_OK;
+		stack = p11_array_new (NULL);
+		nattrs = p11_attrs_count (*attrs);
+		nmerge = p11_attrs_count (merge);
+		nextra = p11_attrs_count (extra);
+
+		/* Make a shallow copy of the combined attributes for validation */
+		built = calloc (nmerge + nattrs + nextra + 1, sizeof (CK_ATTRIBUTE));
+		return_val_if_fail (built != NULL, CKR_GENERAL_ERROR);
+
+		count = nmerge;
+		memcpy (built, merge, sizeof (CK_ATTRIBUTE) * nmerge);
+		p11_array_push (stack, merge);
+		merge_attrs (built, &count, *attrs, nattrs, stack);
+		merge_attrs (built, &count, extra, nextra, stack);
+
+		/* The terminator attribute */
+		built[count].type = CKA_INVALID;
+		assert (p11_attrs_terminator (built + count));
 	}
+
+	rv = index->store (index->data, index, handle, &built);
+
+	if (rv == CKR_OK) {
+		for (i = 0; stack && i < stack->num; i++)
+			free (stack->elem[i]);
+		*attrs = built;
+	} else {
+		p11_attrs_free (extra);
+		free (built);
+	}
+
+	p11_array_free (stack);
+	return rv;
 }
 
 static void
@@ -312,7 +440,7 @@ index_notify (p11_index *index,
 }
 
 void
-p11_index_batch (p11_index *index)
+p11_index_load (p11_index *index)
 {
 	return_if_fail (index != NULL);
 
@@ -350,7 +478,7 @@ p11_index_finish (p11_index *index)
 }
 
 bool
-p11_index_in_batch (p11_index *index)
+p11_index_loading (p11_index *index)
 {
 	return_val_if_fail (index != NULL, false);
 	return index->changes ? true : false;
@@ -370,7 +498,9 @@ p11_index_take (p11_index *index,
 	obj = calloc (1, sizeof (index_object));
 	return_val_if_fail (obj != NULL, CKR_HOST_MEMORY);
 
-	rv = index_build (index, &obj->attrs, attrs);
+	obj->handle = p11_module_next_id ();
+
+	rv = index_build (index, obj->handle, &obj->attrs, attrs);
 	if (rv != CKR_OK) {
 		p11_attrs_free (attrs);
 		free (obj);
@@ -378,7 +508,6 @@ p11_index_take (p11_index *index,
 	}
 
 	return_val_if_fail (obj->attrs != NULL, CKR_GENERAL_ERROR);
-	obj->handle = p11_module_next_id ();
 
 	if (!p11_dict_set (index->objects, &obj->handle, obj))
 		return_val_if_reached (CKR_HOST_MEMORY);
@@ -426,7 +555,7 @@ p11_index_update (p11_index *index,
 		return CKR_OBJECT_HANDLE_INVALID;
 	}
 
-	rv = index_build (index, &obj->attrs, update);
+	rv = index_build (index, obj->handle, &obj->attrs, update);
 	if (rv != CKR_OK) {
 		p11_attrs_free (update);
 		return rv;
@@ -464,11 +593,21 @@ p11_index_remove (p11_index *index,
                   CK_OBJECT_HANDLE handle)
 {
 	index_object *obj;
+	CK_RV rv;
 
 	return_val_if_fail (index != NULL, CKR_GENERAL_ERROR);
 
 	if (!p11_dict_steal (index->objects, &handle, NULL, (void **)&obj))
 		return CKR_OBJECT_HANDLE_INVALID;
+
+	rv = (index->remove) (index->data, index, obj->attrs);
+
+	/* If the writer failed the remove, then add it back */
+	if (rv != CKR_OK) {
+		if (!p11_dict_set (index->objects, &obj->handle, obj))
+			return_val_if_reached (CKR_HOST_MEMORY);
+		return rv;
+	}
 
 	/* This takes ownership of the attributes */
 	index_notify (index, handle, obj->attrs);
@@ -507,7 +646,7 @@ index_replacev (p11_index *index,
 					continue;
 				if (p11_attrs_matchn (replace[j], attr, 1)) {
 					attrs = NULL;
-					rv = index_build (index, &attrs, replace[j]);
+					rv = index_build (index, obj->handle, &attrs, replace[j]);
 					if (rv != CKR_OK)
 						return rv;
 					p11_attrs_free (obj->attrs);
@@ -531,10 +670,11 @@ index_replacev (p11_index *index,
 	for (j = 0; j < replacen; j++) {
 		if (!replace[j])
 			continue;
-		rv = p11_index_take (index, replace[j], NULL);
+		attrs = replace[j];
+		replace[j] = NULL;
+		rv = p11_index_take (index, attrs, NULL);
 		if (rv != CKR_OK)
 			return rv;
-		replace[j] = NULL;
 	}
 
 	return CKR_OK;
@@ -566,13 +706,18 @@ p11_index_replace_all (p11_index *index,
 	handles = p11_index_find_all (index, match, -1);
 
 	rv = index_replacev (index, handles, key,
-	                     (CK_ATTRIBUTE **)replace->elem,
-	                     replace->num);
+	                     replace ? (CK_ATTRIBUTE **)replace->elem : NULL,
+	                     replace ? replace->num : 0);
 
-	for (i = 0; i < replace->num; i++) {
-		if (!replace->elem[i]) {
-			p11_array_remove (replace, i);
-			i--;
+	if (rv == CKR_OK) {
+		if (replace)
+			p11_array_clear (replace);
+	} else {
+		for (i = 0; replace && i < replace->num; i++) {
+			if (!replace->elem[i]) {
+				p11_array_remove (replace, i);
+				i--;
+			}
 		}
 	}
 
@@ -608,7 +753,7 @@ index_select (p11_index *index,
               index_sink sink,
               void *data)
 {
-	index_bucket *buckets[MAX_SELECT];
+	index_bucket *selected[MAX_SELECT];
 	CK_OBJECT_HANDLE handle;
 	index_object *obj;
 	unsigned int hash;
@@ -621,10 +766,10 @@ index_select (p11_index *index,
 	for (n = 0, num = 0; n < count && num < MAX_SELECT; n++) {
 		if (is_indexable (index, match[n].type)) {
 			hash = p11_attr_hash (match + n);
-			buckets[num] = index->buckets + (hash % NUM_BUCKETS);
+			selected[num] = index->buckets + (hash % NUM_BUCKETS);
 
 			/* If any index is empty, then obviously no match */
-			if (!buckets[num]->num)
+			if (!selected[num]->num)
 				return;
 
 			num++;
@@ -641,15 +786,15 @@ index_select (p11_index *index,
 		return;
 	}
 
-	for (i = 0; i < buckets[0]->num; i++) {
+	for (i = 0; i < selected[0]->num; i++) {
 		/* A candidate match from first bucket */
-		handle = buckets[0]->elem[i];
+		handle = selected[0]->elem[i];
 
 		/* Check if the candidate is in other buckets */
 		for (j = 1; j < num; j++) {
-			assert (buckets[j]->elem); /* checked above */
-			at = binary_search (buckets[j]->elem, 0, buckets[j]->num, handle);
-			if (at >= buckets[j]->num || buckets[j]->elem[at] != handle) {
+			assert (selected[j]->elem); /* checked above */
+			at = binary_search (selected[j]->elem, 0, selected[j]->num, handle);
+			if (at >= selected[j]->num || selected[j]->elem[at] != handle) {
 				handle = 0;
 				break;
 			}

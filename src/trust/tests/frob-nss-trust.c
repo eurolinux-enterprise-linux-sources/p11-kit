@@ -73,6 +73,7 @@ dump_object (P11KitIter *iter,
 	free (string);
 
 	free (label.pValue);
+	free (name);
 }
 
 static int
@@ -102,10 +103,13 @@ dump_trust_module (const char *path)
 
 	CK_ULONG count = p11_attrs_count (template);
 
-	rv = p11_kit_load_initialize_module (path, &module);
+	module = p11_kit_module_load (path, 0);
+	return_val_if_fail (module != NULL, 1);
+
+	rv = p11_kit_module_initialize (module);
 	return_val_if_fail (rv == CKR_OK, 1);
 
-	iter = p11_kit_iter_new (NULL);
+	iter = p11_kit_iter_new (NULL, 0);
 	p11_kit_iter_add_filter (iter, &match, 1);
 	p11_kit_iter_begin_with (iter, module, 0, 0);
 
@@ -120,7 +124,8 @@ dump_trust_module (const char *path)
 
 	return_val_if_fail (rv == CKR_CANCEL, 1);
 
-	p11_kit_finalize_module (module);
+	p11_kit_module_finalize (module);
+	p11_kit_module_release (module);
 
 	return 0;
 }
@@ -152,13 +157,19 @@ compare_trust_modules (const char *path1,
 		{ CKA_INVALID, }
 	};
 
-	rv = p11_kit_load_initialize_module (path1, &module1);
+	module1 = p11_kit_module_load (path1, 0);
+	return_val_if_fail (module1 != NULL, 1);
+
+	rv = p11_kit_module_initialize (module1);
 	return_val_if_fail (rv == CKR_OK, 1);
 
-	rv = p11_kit_load_initialize_module (path2, &module2);
+	module2 = p11_kit_module_load (path2, 0);
+	return_val_if_fail (module2 != NULL, 1);
+
+	rv = p11_kit_module_initialize (module2);
 	return_val_if_fail (rv == CKR_OK, 1);
 
-	iter = p11_kit_iter_new (NULL);
+	iter = p11_kit_iter_new (NULL, 0);
 	p11_kit_iter_add_filter (iter, &match, 1);
 	p11_kit_iter_begin_with (iter, module1, 0, 0);
 
@@ -172,7 +183,7 @@ compare_trust_modules (const char *path1,
 		p11_attrs_purge (check);
 
 		/* Check that this object exists */
-		iter2 = p11_kit_iter_new (NULL);
+		iter2 = p11_kit_iter_new (NULL, 0);
 		p11_kit_iter_add_filter (iter2, check, p11_attrs_count (check));
 		p11_kit_iter_begin_with (iter2, module2, 0, 0);
 		rv = p11_kit_iter_next (iter2);
@@ -185,8 +196,11 @@ compare_trust_modules (const char *path1,
 	}
 
 	return_val_if_fail (rv == CKR_CANCEL, 1);
-	p11_kit_finalize_module (module1);
-	p11_kit_finalize_module (module2);
+	p11_kit_module_finalize (module1);
+	p11_kit_module_release (module1);
+
+	p11_kit_module_finalize (module2);
+	p11_kit_module_release (module2);
 
 	return 0;
 }

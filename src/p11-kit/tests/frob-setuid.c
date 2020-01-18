@@ -49,7 +49,6 @@ main (void)
 	CK_FUNCTION_LIST *module;
 	char *field;
 	char *name;
-	CK_RV rv;
 	int ret;
 	int i;
 
@@ -60,14 +59,14 @@ main (void)
 
 	putenv ("P11_KIT_STRICT=1");
 
-	rv = p11_kit_initialize_registered ();
-	assert (rv == CKR_OK);
+	modules = p11_kit_modules_load_and_initialize (0);
+	assert (modules != NULL);
 
 	/* This is a system configured module */
-	module = p11_kit_registered_name_to_module ("one");
+	module = p11_kit_module_for_name (modules, "one");
 	assert (module != NULL);
 
-	field = p11_kit_registered_option (module, "setting");
+	field = p11_kit_config_option (module, "setting");
 	printf ("'setting' on module 'one': %s\n", field ? field : "(null)");
 
 	assert (field != NULL);
@@ -78,20 +77,19 @@ main (void)
 
 	free (field);
 
-	modules = p11_kit_registered_modules ();
 	for (i = 0; modules[i] != NULL; i++) {
-		name = p11_kit_registered_module_to_name (modules[i]);
+		name = p11_kit_module_get_name (modules[i]);
 		printf ("%s\n", name);
 		free (name);
 	}
-	free (modules);
 
-	field = p11_kit_registered_option (module, "number");
+	field = p11_kit_config_option (module, "number");
 	printf ("'number' on module 'one': %s\n", field ? field : "(null)");
 
 	ret = atoi (field ? field : "0");
 	assert (ret != 0);
+	free (field);
 
-	p11_kit_finalize_registered ();
+	p11_kit_modules_finalize_and_release (modules);
 	return ret;
 }

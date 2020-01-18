@@ -33,7 +33,7 @@
  */
 
 #include "config.h"
-#include "CuTest.h"
+#include "test.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -43,7 +43,6 @@
 #include "debug.h"
 #include "lexer.h"
 #include "message.h"
-#include "pem.h"
 
 typedef struct {
 	int tok_type;
@@ -52,85 +51,74 @@ typedef struct {
 } expected_tok;
 
 static void
-on_pem_get_type (const char *type,
-                 const unsigned char *contents,
-                 size_t length,
-                 void *user_data)
-{
-	char **result = (char **)user_data;
-	*result = strdup (type);
-}
-
-static void
-check_lex_msg (CuTest *tc,
-               const char *file,
+check_lex_msg (const char *file,
                int line,
+               const char *function,
                const expected_tok *expected,
                const char *input,
                bool failure)
 {
-	unsigned int count;
 	p11_lexer lexer;
-	char *type;
+	size_t len;
 	bool failed;
 	int i;
 
 	p11_lexer_init (&lexer, "test", input, strlen (input));
 	for (i = 0; p11_lexer_next (&lexer, &failed); i++) {
-		CuAssertIntEquals_LineMsg (tc, file, line,
-		                           "lexer token type does not match",
-		                           expected[i].tok_type, lexer.tok_type);
+		if (expected[i].tok_type != lexer.tok_type)
+			p11_test_fail (file, line, function,
+			               "lexer token type does not match: (%d != %d)",
+			               expected[i].tok_type, lexer.tok_type);
 		switch (lexer.tok_type) {
 		case TOK_FIELD:
-			CuAssertStrEquals_LineMsg (tc, file, line,
-			                           "field name doesn't match",
-			                           expected[i].name, lexer.tok.field.name);
-			CuAssertStrEquals_LineMsg (tc, file, line,
-			                           "field value doesn't match",
-			                           expected[i].value, lexer.tok.field.value);
+			if (strcmp (expected[i].name, lexer.tok.field.name) != 0)
+				p11_test_fail (file, line, function,
+				               "field name doesn't match: (%s != %s)",
+				               expected[i].name, lexer.tok.field.name);
+			if (strcmp (expected[i].value, lexer.tok.field.value) != 0)
+				p11_test_fail (file, line, function,
+				               "field value doesn't match: (%s != %s)",
+				               expected[i].value, lexer.tok.field.value);
 			break;
 		case TOK_SECTION:
-			CuAssertStrEquals_LineMsg (tc, file, line,
-			                           "section name doesn't match",
-			                           expected[i].name, lexer.tok.field.name);
+			if (strcmp (expected[i].name, lexer.tok.field.name) != 0)
+				p11_test_fail (file, line, function,
+				               "section name doesn't match: (%s != %s)",
+				               expected[i].name, lexer.tok.field.name);
 			break;
 		case TOK_PEM:
-			type = NULL;
-			count = p11_pem_parse (lexer.tok.pem.begin, lexer.tok.pem.length,
-			                       on_pem_get_type, &type);
-			CuAssertIntEquals_LineMsg (tc, file, line,
-			                           "wrong number of PEM blocks",
-			                           1, count);
-			CuAssertStrEquals_LineMsg (tc, file, line,
-			                           "wrong type of PEM block",
-			                           expected[i].name, type);
-			free (type);
+			len = strlen (expected[i].name);
+			if (lexer.tok.pem.length < len ||
+			    strncmp (lexer.tok.pem.begin, expected[i].name, len) != 0) {
+				p11_test_fail (file, line, function,
+				               "wrong type of PEM block: %s",
+				               expected[i].name);
+			}
 			break;
 		case TOK_EOF:
-			CuFail_Line (tc, file, line, NULL, "eof should not be recieved");
+			p11_test_fail (file, line, function, "eof should not be recieved");
 			break;
 		}
 	}
 
-	if (failure)
-		CuAssert_Line (tc, file, line, "lexing didn't fail", failed);
-	else
-		CuAssert_Line (tc, file, line, "lexing failed", !failed);
-	CuAssertIntEquals_LineMsg (tc, file, line,
-	                           "premature end of lexing",
-	                           TOK_EOF, expected[i].tok_type);
+	if (failure && !failed)
+		p11_test_fail (file, line, function, "lexing didn't fail");
+	else if (!failure && failed)
+		p11_test_fail (file, line, function, "lexing failed");
+	if (TOK_EOF != expected[i].tok_type)
+		p11_test_fail (file, line, function, "premature end of lexing");
 
 	p11_lexer_done (&lexer);
 }
 
-#define check_lex_success(tc, expected, input) \
-	check_lex_msg (tc, __FILE__, __LINE__, expected, input, false)
+#define check_lex_success(expected, input) \
+	check_lex_msg (__FILE__, __LINE__, __FUNCTION__, expected, input, false)
 
-#define check_lex_failure(tc, expected, input) \
-	check_lex_msg (tc, __FILE__, __LINE__, expected, input, true)
+#define check_lex_failure(expected, input) \
+	check_lex_msg (__FILE__, __LINE__, __FUNCTION__, expected, input, true)
 
 static void
-test_basic (CuTest *tc)
+test_basic (void)
 {
 	const char *input = "[the header]\n"
 	                    "field: value\n"
@@ -141,15 +129,15 @@ test_basic (CuTest *tc)
 	const expected_tok expected[] = {
 		{ TOK_SECTION, "the header" },
 		{ TOK_FIELD, "field", "value" },
-		{ TOK_PEM, "BLOCK1", },
+		{ TOK_PEM, "-----BEGIN BLOCK1-----\n", },
 		{ TOK_EOF }
 	};
 
-	check_lex_success (tc, expected, input);
+	check_lex_success (expected, input);
 }
 
 static void
-test_corners (CuTest *tc)
+test_corners (void)
 {
 	const char *input = "\r\n"                 /* blankline */
 	                    " [the header]\r\n"    /* bad line endings */
@@ -171,15 +159,15 @@ test_corners (CuTest *tc)
 		{ TOK_FIELD, "number", "3" },
 		{ TOK_FIELD, "number", "4" },
 		{ TOK_FIELD, "not-a-comment", "# value" },
-		{ TOK_PEM, "BLOCK1", },
+		{ TOK_PEM, "-----BEGIN BLOCK1-----\r\n", },
 		{ TOK_EOF }
 	};
 
-	check_lex_success (tc, expected, input);
+	check_lex_success (expected, input);
 }
 
 static void
-test_following (CuTest *tc)
+test_following (void)
 {
 	const char *input = "-----BEGIN BLOCK1-----\n"
 	                    "aYNNXqshlVxCdo8QfKeXh3GUzd/yn4LYIVgQrx4a\n"
@@ -187,16 +175,16 @@ test_following (CuTest *tc)
 	                    "field: value";
 
 	const expected_tok expected[] = {
-		{ TOK_PEM, "BLOCK1", },
+		{ TOK_PEM, "-----BEGIN BLOCK1-----\n", },
 		{ TOK_FIELD, "field", "value" },
 		{ TOK_EOF }
 	};
 
-	check_lex_success (tc, expected, input);
+	check_lex_success (expected, input);
 }
 
 static void
-test_bad_pem (CuTest *tc)
+test_bad_pem (void)
 {
 	const char *input = "field: value\n"
 	                    "-----BEGIN BLOCK1-----\n"
@@ -209,13 +197,13 @@ test_bad_pem (CuTest *tc)
 
 	p11_message_quiet ();
 
-	check_lex_failure (tc, expected, input);
+	check_lex_failure (expected, input);
 
 	p11_message_loud ();
 }
 
 static void
-test_bad_section (CuTest *tc)
+test_bad_section (void)
 {
 	const char *input = "field: value\n"
 	                    "[section\n"
@@ -228,13 +216,13 @@ test_bad_section (CuTest *tc)
 
 	p11_message_quiet ();
 
-	check_lex_failure (tc, expected, input);
+	check_lex_failure (expected, input);
 
 	p11_message_loud ();
 }
 
 static void
-test_bad_value (CuTest *tc)
+test_bad_value (void)
 {
 	const char *input = "field_value\n"
 	                    "[section\n"
@@ -246,35 +234,20 @@ test_bad_value (CuTest *tc)
 
 	p11_message_quiet ();
 
-	check_lex_failure (tc, expected, input);
+	check_lex_failure (expected, input);
 
 	p11_message_loud ();
 }
 
 int
-main (void)
+main (int argc,
+      char *argv[])
 {
-	CuString *output = CuStringNew ();
-	CuSuite* suite = CuSuiteNew ();
-	int ret;
-
-	putenv ("P11_KIT_STRICT=1");
-	p11_debug_init ();
-
-	SUITE_ADD_TEST (suite, test_basic);
-	SUITE_ADD_TEST (suite, test_corners);
-	SUITE_ADD_TEST (suite, test_following);
-	SUITE_ADD_TEST (suite, test_bad_pem);
-	SUITE_ADD_TEST (suite, test_bad_section);
-	SUITE_ADD_TEST (suite, test_bad_value);
-
-	CuSuiteRun (suite);
-	CuSuiteSummary (suite, output);
-	CuSuiteDetails (suite, output);
-	printf ("%s\n", output->buffer);
-	ret = suite->failCount;
-	CuSuiteDelete (suite);
-	CuStringDelete (output);
-
-	return ret;
+	p11_test (test_basic, "/lexer/basic");
+	p11_test (test_corners, "/lexer/corners");
+	p11_test (test_following, "/lexer/following");
+	p11_test (test_bad_pem, "/lexer/bad-pem");
+	p11_test (test_bad_section, "/lexer/bad-section");
+	p11_test (test_bad_value, "/lexer/bad-value");
+	return p11_test_run (argc, argv);
 }

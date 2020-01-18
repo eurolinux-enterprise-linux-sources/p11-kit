@@ -33,7 +33,8 @@
  */
 
 #include "config.h"
-#include "CuTest.h"
+#include "test.h"
+#include "test-trust.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -41,14 +42,13 @@
 
 #include "attrs.h"
 #include "builder.h"
-#include "hash.h"
 #include "debug.h"
+#include "digest.h"
 #include "index.h"
 #include "message.h"
 #include "oid.h"
+#include "pkcs11i.h"
 #include "pkcs11x.h"
-
-#include "test-data.h"
 
 struct {
 	p11_builder *builder;
@@ -73,17 +73,17 @@ static CK_BBOOL truev = CK_TRUE;
 static CK_BBOOL falsev = CK_FALSE;
 
 static void
-setup (CuTest *cu)
+setup (void *unused)
 {
 	test.builder = p11_builder_new (P11_BUILDER_FLAG_TOKEN);
-	CuAssertPtrNotNull (cu, test.builder);
+	assert_ptr_not_null (test.builder);
 
-	test.index = p11_index_new (p11_builder_build, p11_builder_changed, test.builder);
-	CuAssertPtrNotNull (cu, test.index);
+	test.index = p11_index_new (p11_builder_build, NULL, NULL, p11_builder_changed, test.builder);
+	assert_ptr_not_null (test.index);
 }
 
 static void
-teardown (CuTest *cu)
+teardown (void *unused)
 {
 	p11_builder_free (test.builder);
 	p11_index_free (test.index);
@@ -91,20 +91,16 @@ teardown (CuTest *cu)
 }
 
 static void
-test_get_cache (CuTest *cu)
+test_get_cache (void)
 {
 	p11_asn1_cache *cache;
 
-	setup (cu);
-
 	cache = p11_builder_get_cache (test.builder);
-	CuAssertPtrEquals (cu, NULL, p11_asn1_cache_get (cache, "blah", (unsigned char *)"blah", 4));
-
-	teardown (cu);
+	assert_ptr_eq (NULL, p11_asn1_cache_get (cache, "blah", (unsigned char *)"blah", 4));
 }
 
 static void
-test_build_data (CuTest *cu)
+test_build_data (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &data, sizeof (data) },
@@ -126,23 +122,24 @@ test_build_data (CuTest *cu)
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
 
-	setup (cu);
-
 	attrs = NULL;
+	extra = NULL;
 	merge = p11_attrs_dup (input);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_OK, rv);
 
-	test_check_attrs (cu, check, attrs);
+	attrs = p11_attrs_merge (attrs, merge, true);
+	attrs = p11_attrs_merge (attrs, extra, false);
+
+	test_check_attrs (check, attrs);
 	p11_attrs_free (attrs);
-
-	teardown (cu);
 }
 
 static void
-test_build_certificate (CuTest *cu)
+test_build_certificate (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &certificate, sizeof (certificate) },
@@ -169,25 +166,26 @@ test_build_certificate (CuTest *cu)
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
 
-	setup (cu);
-
 	attrs = NULL;
+	extra = NULL;
 	merge = p11_attrs_dup (input);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_OK, rv);
 
-	test_check_attrs (cu, expected, attrs);
+	attrs = p11_attrs_merge (attrs, merge, true);
+	attrs = p11_attrs_merge (attrs, extra, false);
+
+	test_check_attrs (expected, attrs);
 	p11_attrs_free (attrs);
-
-	teardown (cu);
 }
 
 static void
-test_build_certificate_empty (CuTest *cu)
+test_build_certificate_empty (void)
 {
-	unsigned char checksum[P11_HASH_SHA1_LEN];
+	unsigned char checksum[P11_DIGEST_SHA1_LEN];
 	CK_ULONG domain = 0;
 	CK_ULONG category = 0;
 
@@ -221,21 +219,22 @@ test_build_certificate_empty (CuTest *cu)
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
 
-	setup (cu);
-
-	p11_hash_sha1 (checksum, test_cacert3_ca_der, sizeof (test_cacert3_ca_der), NULL);
+	p11_digest_sha1 (checksum, test_cacert3_ca_der, sizeof (test_cacert3_ca_der), NULL);
 
 	attrs = NULL;
+	extra = NULL;
 	merge = p11_attrs_dup (input);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_OK, rv);
 
-	test_check_attrs (cu, expected, attrs);
+	attrs = p11_attrs_merge (attrs, merge, true);
+	attrs = p11_attrs_merge (attrs, extra, false);
+
+	test_check_attrs (expected, attrs);
 	p11_attrs_free (attrs);
-
-	teardown (cu);
 }
 
 static const unsigned char entrust_pretend_ca[] = {
@@ -311,8 +310,30 @@ static const unsigned char entrust_pretend_ca[] = {
 	0xbd, 0x4c, 0x45, 0x9e, 0x61, 0xba, 0xbf, 0x84, 0x81, 0x92, 0x03, 0xd1, 0xd2, 0x69, 0x7c, 0xc5,
 };
 
+static const unsigned char entrust_public_key[] = {
+	0x30, 0x82, 0x01, 0x22, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01,
+	0x01, 0x05, 0x00, 0x03, 0x82, 0x01, 0x0f, 0x00, 0x30, 0x82, 0x01, 0x0a, 0x02, 0x82, 0x01, 0x01,
+	0x00, 0xad, 0x4d, 0x4b, 0xa9, 0x12, 0x86, 0xb2, 0xea, 0xa3, 0x20, 0x07, 0x15, 0x16, 0x64, 0x2a,
+	0x2b, 0x4b, 0xd1, 0xbf, 0x0b, 0x4a, 0x4d, 0x8e, 0xed, 0x80, 0x76, 0xa5, 0x67, 0xb7, 0x78, 0x40,
+	0xc0, 0x73, 0x42, 0xc8, 0x68, 0xc0, 0xdb, 0x53, 0x2b, 0xdd, 0x5e, 0xb8, 0x76, 0x98, 0x35, 0x93,
+	0x8b, 0x1a, 0x9d, 0x7c, 0x13, 0x3a, 0x0e, 0x1f, 0x5b, 0xb7, 0x1e, 0xcf, 0xe5, 0x24, 0x14, 0x1e,
+	0xb1, 0x81, 0xa9, 0x8d, 0x7d, 0xb8, 0xcc, 0x6b, 0x4b, 0x03, 0xf1, 0x02, 0x0c, 0xdc, 0xab, 0xa5,
+	0x40, 0x24, 0x00, 0x7f, 0x74, 0x94, 0xa1, 0x9d, 0x08, 0x29, 0xb3, 0x88, 0x0b, 0xf5, 0x87, 0x77,
+	0x9d, 0x55, 0xcd, 0xe4, 0xc3, 0x7e, 0xd7, 0x6a, 0x64, 0xab, 0x85, 0x14, 0x86, 0x95, 0x5b, 0x97,
+	0x32, 0x50, 0x6f, 0x3d, 0xc8, 0xba, 0x66, 0x0c, 0xe3, 0xfc, 0xbd, 0xb8, 0x49, 0xc1, 0x76, 0x89,
+	0x49, 0x19, 0xfd, 0xc0, 0xa8, 0xbd, 0x89, 0xa3, 0x67, 0x2f, 0xc6, 0x9f, 0xbc, 0x71, 0x19, 0x60,
+	0xb8, 0x2d, 0xe9, 0x2c, 0xc9, 0x90, 0x76, 0x66, 0x7b, 0x94, 0xe2, 0xaf, 0x78, 0xd6, 0x65, 0x53,
+	0x5d, 0x3c, 0xd6, 0x9c, 0xb2, 0xcf, 0x29, 0x03, 0xf9, 0x2f, 0xa4, 0x50, 0xb2, 0xd4, 0x48, 0xce,
+	0x05, 0x32, 0x55, 0x8a, 0xfd, 0xb2, 0x64, 0x4c, 0x0e, 0xe4, 0x98, 0x07, 0x75, 0xdb, 0x7f, 0xdf,
+	0xb9, 0x08, 0x55, 0x60, 0x85, 0x30, 0x29, 0xf9, 0x7b, 0x48, 0xa4, 0x69, 0x86, 0xe3, 0x35, 0x3f,
+	0x1e, 0x86, 0x5d, 0x7a, 0x7a, 0x15, 0xbd, 0xef, 0x00, 0x8e, 0x15, 0x22, 0x54, 0x17, 0x00, 0x90,
+	0x26, 0x93, 0xbc, 0x0e, 0x49, 0x68, 0x91, 0xbf, 0xf8, 0x47, 0xd3, 0x9d, 0x95, 0x42, 0xc1, 0x0e,
+	0x4d, 0xdf, 0x6f, 0x26, 0xcf, 0xc3, 0x18, 0x21, 0x62, 0x66, 0x43, 0x70, 0xd6, 0xd5, 0xc0, 0x07,
+	0xe1, 0x02, 0x03, 0x01, 0x00, 0x01,
+};
+
 static void
-test_build_certificate_non_ca (CuTest *cu)
+test_build_certificate_non_ca (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &certificate, sizeof (certificate) },
@@ -327,22 +348,23 @@ test_build_certificate_non_ca (CuTest *cu)
 	};
 
 	CK_ATTRIBUTE *attrs;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
 
-	setup (cu);
-
 	attrs = NULL;
-	rv = p11_builder_build (test.builder, test.index, &attrs, p11_attrs_dup (input));
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	extra = NULL;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
 
-	test_check_attrs (cu, expected, attrs);
+	attrs = p11_attrs_merge (attrs, p11_attrs_dup (input), true);
+	attrs = p11_attrs_merge (attrs, extra, false);
+
+	test_check_attrs (expected, attrs);
 	p11_attrs_free (attrs);
-
-	teardown (cu);
 }
 
 static void
-test_build_certificate_v1_ca (CuTest *cu)
+test_build_certificate_v1_ca (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &certificate, sizeof (certificate) },
@@ -357,30 +379,31 @@ test_build_certificate_v1_ca (CuTest *cu)
 	};
 
 	CK_ATTRIBUTE *attrs;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
 
-	setup (cu);
-
 	attrs = NULL;
-	rv = p11_builder_build (test.builder, test.index, &attrs, p11_attrs_dup (input));
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	extra = NULL;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
 
-	test_check_attrs (cu, expected, attrs);
+	attrs = p11_attrs_merge (attrs, p11_attrs_dup (input), true);
+	attrs = p11_attrs_merge (attrs, extra, false);
+
+	test_check_attrs (expected, attrs);
 	p11_attrs_free (attrs);
-
-	teardown (cu);
 }
 
 static void
-test_build_certificate_staple_ca (CuTest *cu)
+test_build_certificate_staple_ca (void)
 {
 	CK_ULONG category = 2; /* CA */
 
 	CK_ATTRIBUTE stapled[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension) },
 		{ CKA_OBJECT_ID, (void *)P11_OID_BASIC_CONSTRAINTS, sizeof (P11_OID_BASIC_CONSTRAINTS) },
-		{ CKA_VALUE, "\x30\x03\x01\x01\xFF", 5 },
-		{ CKA_ID, "\x55\xe4\x81\xd1\x11\x80\xbe\xd8\x89\xb9\x08\xa3\x31\xf9\xa1\x24\x09\x16\xb9\x70", 20 },
+		{ CKA_VALUE, "\x30\x0f\x06\x03\x55\x1d\x13\x01\x01\xff\x04\x05\x30\x03\x01\x01\xff", 17 },
+		{ CKA_PUBLIC_KEY_INFO, (void *)entrust_public_key, sizeof (entrust_public_key) },
 		{ CKA_INVALID },
 	};
 
@@ -397,40 +420,41 @@ test_build_certificate_staple_ca (CuTest *cu)
 	};
 
 	CK_ATTRIBUTE *attrs;
-	CK_OBJECT_HANDLE handle;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
-
-	setup (cu);
 
 	/* Adding the stapled extension *first*, and then the certificate */
 
 	/* Add a stapled certificate */
 	rv = p11_index_add (test.index, stapled, 4, NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 
-	rv = p11_index_add (test.index, input, 4, &handle);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	attrs = NULL;
+	extra = NULL;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	attrs = p11_attrs_merge (attrs, p11_attrs_dup (input), true);
+	attrs = p11_attrs_merge (attrs, extra, false);
 
 	/*
 	 * Even though the certificate is not a valid CA, the presence of the
 	 * stapled certificate extension transforms it into a CA.
 	 */
-	attrs = p11_index_lookup (test.index, handle);
-	test_check_attrs (cu, expected, attrs);
-
-	teardown (cu);
+	test_check_attrs (expected, attrs);
+	p11_attrs_free (attrs);
 }
 
 static void
-test_build_certificate_staple_ca_backwards (CuTest *cu)
+test_build_certificate_staple_ca_backwards (void)
 {
 	CK_ULONG category = 2; /* CA */
 
 	CK_ATTRIBUTE stapled[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension) },
 		{ CKA_OBJECT_ID, (void *)P11_OID_BASIC_CONSTRAINTS, sizeof (P11_OID_BASIC_CONSTRAINTS) },
-		{ CKA_VALUE, "\x30\x03\x01\x01\xFF", 5 },
-		{ CKA_ID, "\x55\xe4\x81\xd1\x11\x80\xbe\xd8\x89\xb9\x08\xa3\x31\xf9\xa1\x24\x09\x16\xb9\x70", 20 },
+		{ CKA_VALUE, "\x30\x0f\x06\x03\x55\x1d\x13\x01\x01\xff\x04\x05\x30\x03\x01\x01\xff", 17 },
+		{ CKA_PUBLIC_KEY_INFO, (void *)entrust_public_key, sizeof (entrust_public_key) },
 		{ CKA_INVALID },
 	};
 
@@ -449,81 +473,26 @@ test_build_certificate_staple_ca_backwards (CuTest *cu)
 	CK_RV rv;
 	CK_ATTRIBUTE *attrs;
 	CK_OBJECT_HANDLE handle;
-
-	setup (cu);
 
 	/* Adding the certificate *first*, and then the stapled extension */
 
 	rv = p11_index_add (test.index, input, 4, &handle);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 
 	/* Add a stapled certificate */
 	rv = p11_index_add (test.index, stapled, 4, NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 
 	/*
 	 * Even though the certificate is not a valid CA, the presence of the
 	 * stapled certificate extension transforms it into a CA.
 	 */
 	attrs = p11_index_lookup (test.index, handle);
-	test_check_attrs (cu, expected, attrs);
-
-	teardown (cu);
+	test_check_attrs (expected, attrs);
 }
 
 static void
-test_build_certificate_staple_ca_specific_id (CuTest *cu)
-{
-	CK_ULONG category = 2; /* CA */
-
-	CK_ATTRIBUTE stapled[] = {
-		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension) },
-		{ CKA_OBJECT_ID, (void *)P11_OID_BASIC_CONSTRAINTS, sizeof (P11_OID_BASIC_CONSTRAINTS) },
-		{ CKA_VALUE, "\x30\x03\x01\x01\xFF", 5 },
-		{ CKA_ID, "the id", 6 },
-		{ CKA_INVALID },
-	};
-
-	CK_ATTRIBUTE input[] = {
-		{ CKA_CLASS, &certificate, sizeof (certificate) },
-		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
-		{ CKA_VALUE, (void *)entrust_pretend_ca, sizeof (entrust_pretend_ca) },
-		{ CKA_ID, "the id", 6 },
-		{ CKA_INVALID },
-	};
-
-	CK_ATTRIBUTE expected[] = {
-		{ CKA_CERTIFICATE_CATEGORY, &category, sizeof (category) },
-		{ CKA_INVALID },
-	};
-
-	CK_ATTRIBUTE *attrs;
-	CK_OBJECT_HANDLE handle;
-	CK_RV rv;
-
-	setup (cu);
-
-	/* Adding the stapled extension *first*, and then the certificate */
-
-	/* Add a stapled certificate */
-	rv = p11_index_add (test.index, stapled, 4, NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
-
-	rv = p11_index_add (test.index, input, 4, &handle);
-	CuAssertIntEquals (cu, CKR_OK, rv);
-
-	/*
-	 * Even though the certificate is not a valid CA, the presence of the
-	 * stapled certificate extension transforms it into a CA.
-	 */
-	attrs = p11_index_lookup (test.index, handle);
-	test_check_attrs (cu, expected, attrs);
-
-	teardown (cu);
-}
-
-static void
-test_build_certificate_no_type (CuTest *cu)
+test_build_certificate_no_type (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &certificate, sizeof (certificate) },
@@ -532,25 +501,23 @@ test_build_certificate_no_type (CuTest *cu)
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
-
-	setup (cu);
 
 	p11_message_quiet ();
 
 	attrs = NULL;
+	extra = NULL;
 	merge = p11_attrs_dup (input);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_TEMPLATE_INCOMPLETE, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_TEMPLATE_INCOMPLETE, rv);
 	p11_attrs_free (merge);
 
 	p11_message_loud ();
-
-	teardown (cu);
 }
 
 static void
-test_build_certificate_bad_type (CuTest *cu)
+test_build_certificate_bad_type (void)
 {
 	CK_CERTIFICATE_TYPE type = CKC_WTLS;
 
@@ -562,30 +529,27 @@ test_build_certificate_bad_type (CuTest *cu)
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
-
-	setup (cu);
 
 	p11_message_quiet ();
 
 	attrs = NULL;
 	merge = p11_attrs_dup (input);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_TEMPLATE_INCONSISTENT, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_TEMPLATE_INCONSISTENT, rv);
 	p11_attrs_free (merge);
 
 	p11_message_loud ();
-
-	teardown (cu);
 }
 
 static void
-test_build_extension (CuTest *cu)
+test_build_extension (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension) },
-		{ CKA_OBJECT_ID, "\x06\x03\x55\x1d\x50", 5 },
-		{ CKA_VALUE, "the value", 9 },
+		{ CKA_PUBLIC_KEY_INFO, (void *)test_cacert3_ca_public_key, sizeof (test_cacert3_ca_public_key) },
+		{ CKA_VALUE, "\x30\x11\x06\x03\x55\x1d\x50\x04\x0a\x74\x68\x65\x20\x76\x61\x6c\x75\x65\x0a", 19 },
 		{ CKA_INVALID },
 	};
 
@@ -595,25 +559,26 @@ test_build_extension (CuTest *cu)
 		{ CKA_MODIFIABLE, &falsev, sizeof (falsev) },
 		{ CKA_PRIVATE, &falsev, sizeof (falsev) },
 		{ CKA_OBJECT_ID, "\x06\x03\x55\x1d\x50", 5 },
-		{ CKA_VALUE, "the value", 9 },
+		{ CKA_VALUE, "\x30\x11\x06\x03\x55\x1d\x50\x04\x0a\x74\x68\x65\x20\x76\x61\x6c\x75\x65\x0a", 19 },
+		{ CKA_PUBLIC_KEY_INFO, (void *)test_cacert3_ca_public_key, sizeof (test_cacert3_ca_public_key) },
 		{ CKA_LABEL, "", 0 },
-		{ CKA_X_CRITICAL, &falsev, sizeof (falsev) },
 		{ CKA_INVALID },
 	};
 
 	CK_ATTRIBUTE *attrs;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
 
-	setup (cu);
-
 	attrs = NULL;
-	rv = p11_builder_build (test.builder, test.index, &attrs, p11_attrs_dup (input));
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	extra = NULL;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
 
-	test_check_attrs (cu, check, attrs);
+	attrs = p11_attrs_merge (attrs, p11_attrs_dup (input), true);
+	attrs = p11_attrs_merge (attrs, extra, false);
+
+	test_check_attrs (check, attrs);
 	p11_attrs_free (attrs);
-
-	teardown (cu);
 }
 
 /* This certificate has and end date in 2067 */
@@ -644,7 +609,7 @@ static const unsigned char cert_distant_end_date[] = {
 };
 
 static void
-test_build_distant_end_date (CuTest *cu)
+test_build_distant_end_date (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &certificate, sizeof (certificate) },
@@ -660,93 +625,526 @@ test_build_distant_end_date (CuTest *cu)
 	};
 
 	CK_ATTRIBUTE *attrs;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
 
-	setup (cu);
-
 	attrs = NULL;
-	rv = p11_builder_build (test.builder, test.index, &attrs, p11_attrs_dup (input));
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	extra = NULL;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
 
-	test_check_attrs (cu, expected, attrs);
+	attrs = p11_attrs_merge (attrs, p11_attrs_dup (input), true);
+	attrs = p11_attrs_merge (attrs, extra, false);
+
+	test_check_attrs (expected, attrs);
 	p11_attrs_free (attrs);
-
-	teardown (cu);
 }
 
 static void
-test_create_not_settable (CuTest *cu)
+test_valid_bool (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_BBOOL value = CK_TRUE;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_PRIVATE, &value, sizeof (value) },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	p11_attrs_free (extra);
+}
+
+static void
+test_invalid_bool (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_PRIVATE, NULL, 0 },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	p11_message_quiet ();
+
+	input[0].pValue = "123";
+	input[0].ulValueLen = 3;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+
+	input[0].pValue = NULL;
+	input[0].ulValueLen = sizeof (CK_BBOOL);
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	p11_message_loud ();
+}
+
+static void
+test_valid_ulong (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_ULONG value = 2;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_CERTIFICATE_CATEGORY, &value, sizeof (value) },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	p11_attrs_free (extra);
+}
+
+static void
+test_invalid_ulong (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_CERTIFICATE_CATEGORY, NULL, 0 },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	p11_message_quiet ();
+
+	input[0].pValue = "123";
+	input[0].ulValueLen = 3;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+
+	input[0].pValue = NULL;
+	input[0].ulValueLen = sizeof (CK_ULONG);
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	p11_message_loud ();
+}
+
+static void
+test_valid_utf8 (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_LABEL, NULL, 0 },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	input[0].pValue = NULL;
+	input[0].ulValueLen = 0;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	p11_attrs_free (extra);
+}
+
+static void
+test_invalid_utf8 (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_LABEL, NULL, 0 },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	p11_message_quiet ();
+
+	input[0].pValue = "\xfex23";
+	input[0].ulValueLen = 4;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+
+	input[0].pValue = NULL;
+	input[0].ulValueLen = 4;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	p11_message_loud ();
+}
+
+static void
+test_valid_dates (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_DATE date;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_START_DATE, &date, sizeof (CK_DATE) },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	memcpy (date.year, "2000", sizeof (date.year));
+	memcpy (date.month, "10", sizeof (date.month));
+	memcpy (date.day, "10", sizeof (date.day));
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	p11_attrs_free (extra);
+	p11_attrs_free (attrs);
+	attrs = NULL;
+
+	input[0].ulValueLen = 0;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	p11_attrs_free (extra);
+	p11_attrs_free (attrs);
+}
+
+static void
+test_invalid_dates (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_DATE date;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_START_DATE, &date, sizeof (CK_DATE) },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	p11_message_quiet ();
+
+	memcpy (date.year, "AAAA", sizeof (date.year));
+	memcpy (date.month, "BB", sizeof (date.month));
+	memcpy (date.day, "CC", sizeof (date.day));
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	memcpy (date.year, "2000", sizeof (date.year));
+	memcpy (date.month, "15", sizeof (date.month));
+	memcpy (date.day, "80", sizeof (date.day));
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	input[0].pValue = NULL;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	p11_message_loud ();
+}
+
+static void
+test_valid_name (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_SUBJECT, NULL, 0 },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	input[0].pValue = NULL;
+	input[0].ulValueLen = 0;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	p11_attrs_free (extra);
+	p11_attrs_free (attrs);
+	attrs = NULL;
+
+	input[0].pValue = (void *)test_cacert3_ca_issuer;
+	input[0].ulValueLen = sizeof (test_cacert3_ca_issuer);
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	p11_attrs_free (extra);
+	p11_attrs_free (attrs);
+}
+
+static void
+test_invalid_name (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_SUBJECT, NULL, 0 },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	p11_message_quiet ();
+
+	input[0].pValue = "blah";
+	input[0].ulValueLen = 4;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	input[0].pValue = NULL;
+	input[0].ulValueLen = 4;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	p11_message_loud ();
+}
+
+static void
+test_valid_serial (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_SERIAL_NUMBER, NULL, 0 },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	input[0].pValue = NULL;
+	input[0].ulValueLen = 0;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	p11_attrs_free (extra);
+	attrs = NULL;
+
+	input[0].pValue = (void *)test_cacert3_ca_serial;
+	input[0].ulValueLen = sizeof (test_cacert3_ca_serial);
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	p11_attrs_free (extra);
+}
+
+static void
+test_invalid_serial (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_SERIAL_NUMBER, NULL, 0 },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	p11_message_quiet ();
+
+	input[0].pValue = "blah";
+	input[0].ulValueLen = 4;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	input[0].pValue = (void *)test_cacert3_ca_subject;
+	input[0].ulValueLen = sizeof (test_cacert3_ca_subject);
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	input[0].pValue = NULL;
+	input[0].ulValueLen = 4;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	p11_message_loud ();
+}
+
+static void
+test_valid_cert (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_VALUE, NULL, 0 },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	input[0].pValue = NULL;
+	input[0].ulValueLen = 0;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	p11_attrs_free (extra);
+	attrs = NULL;
+
+	input[0].pValue = (void *)test_cacert3_ca_der;
+	input[0].ulValueLen = sizeof (test_cacert3_ca_der);
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	p11_attrs_free (extra);
+}
+
+static void
+test_invalid_cert (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_VALUE, NULL, 0 },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_INVALID },
+	};
+
+	p11_message_quiet ();
+
+	input[0].pValue = "blah";
+	input[0].ulValueLen = 4;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	input[0].pValue = (void *)test_cacert3_ca_subject;
+	input[0].ulValueLen = sizeof (test_cacert3_ca_subject);
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	input[0].pValue = NULL;
+	input[0].ulValueLen = 4;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_VALUE_INVALID, rv);
+
+	p11_message_loud ();
+}
+
+static void
+test_invalid_schema (void)
+{
+	CK_ATTRIBUTE *attrs = NULL;
+	CK_ATTRIBUTE *extra = NULL;
+	CK_RV rv;
+
+	CK_ATTRIBUTE input[] = {
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_URL, "http://blah", 11 },
+		{ CKA_INVALID },
+	};
+
+	p11_message_quiet ();
+
+	/* Missing CKA_HASH_OF_SUBJECT_PUBLIC_KEY and CKA_HASH_OF_ISSUER_PUBLIC_KEY */
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_TEMPLATE_INCONSISTENT, rv);
+
+	p11_message_loud ();
+}
+
+static void
+test_create_not_settable (void)
 {
 	/*
-	 * CKA_TRUSTED cannot be set by the normal user according to spec
+	 * CKA_PUBLIC_KEY_INFO cannot be created/modified
 	 */
 
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &certificate, sizeof (certificate) },
 		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
-		{ CKA_TRUSTED, &falsev, sizeof (falsev) },
 		{ CKA_VALUE, (void *)test_cacert3_ca_der, sizeof (test_cacert3_ca_der) },
+		{ CKA_PUBLIC_KEY_INFO, (void *)verisign_v1_ca_public_key, sizeof (verisign_v1_ca_public_key) },
 		{ CKA_INVALID },
 	};
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
-
-	setup (cu);
 
 	p11_message_quiet ();
 
 	attrs = NULL;
 	merge = p11_attrs_dup (input);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_ATTRIBUTE_READ_ONLY, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_READ_ONLY, rv);
 	p11_attrs_free (merge);
 
 	p11_message_loud ();
 
 	p11_attrs_free (attrs);
-
-	teardown (cu);
 }
 
 static void
-test_create_but_loadable (CuTest *cu)
+test_create_but_loadable (void)
 {
 	/*
-	 * CKA_TRUSTED cannot be set on creation, but can be set if we're
+	 * CKA_PUBLIC_KEY_INFO cannot be set on creation, but can be set if we're
 	 * loading from our store. This is signified by batching.
 	 */
 
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &certificate, sizeof (certificate) },
 		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
-		{ CKA_TRUSTED, &falsev, sizeof (falsev) },
 		{ CKA_VALUE, (void *)test_cacert3_ca_der, sizeof (test_cacert3_ca_der) },
+		{ CKA_PUBLIC_KEY_INFO, (void *)verisign_v1_ca_public_key, sizeof (verisign_v1_ca_public_key) },
 		{ CKA_INVALID },
 	};
 
 	CK_ATTRIBUTE *attrs;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
 
-	setup (cu);
-
-	p11_index_batch (test.index);
+	p11_index_load (test.index);
 
 	attrs = NULL;
-	rv = p11_builder_build (test.builder, test.index, &attrs, p11_attrs_dup (input));
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
 
 	p11_index_finish (test.index);
 
-	test_check_attrs (cu, input, attrs);
-	p11_attrs_free (attrs);
+	attrs = p11_attrs_merge (attrs, p11_attrs_dup (input), true);
+	attrs = p11_attrs_merge (attrs, extra, false);
 
-	teardown (cu);
+	test_check_attrs (input, attrs);
+	p11_attrs_free (attrs);
 }
 
 static void
-test_create_unsupported (CuTest *cu)
+test_create_unsupported (void)
 {
 	CK_OBJECT_CLASS klass = CKO_PRIVATE_KEY;
 
@@ -757,25 +1155,23 @@ test_create_unsupported (CuTest *cu)
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
-
-	setup (cu);
 
 	p11_message_quiet ();
 
 	attrs = NULL;
+	extra = NULL;
 	merge = p11_attrs_dup (input);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_TEMPLATE_INCONSISTENT, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_TEMPLATE_INCONSISTENT, rv);
 	p11_attrs_free (merge);
 
 	p11_message_loud ();
-
-	teardown (cu);
 }
 
 static void
-test_create_generated (CuTest *cu)
+test_create_generated (void)
 {
 	CK_OBJECT_CLASS klass = CKO_NSS_TRUST;
 
@@ -786,25 +1182,23 @@ test_create_generated (CuTest *cu)
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
-
-	setup (cu);
 
 	p11_message_quiet ();
 
 	attrs = NULL;
+	extra = NULL;
 	merge = p11_attrs_dup (input);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_TEMPLATE_INCONSISTENT, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_TEMPLATE_INCONSISTENT, rv);
 	p11_attrs_free (merge);
 
 	p11_message_loud ();
-
-	teardown (cu);
 }
 
 static void
-test_create_bad_attribute (CuTest *cu)
+test_create_bad_attribute (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &data, sizeof (data) },
@@ -815,25 +1209,23 @@ test_create_bad_attribute (CuTest *cu)
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
-
-	setup (cu);
 
 	p11_message_quiet ();
 
 	attrs = NULL;
+	extra = NULL;
 	merge = p11_attrs_dup (input);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_TEMPLATE_INCONSISTENT, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_TEMPLATE_INCONSISTENT, rv);
 	p11_attrs_free (merge);
 
 	p11_message_loud ();
-
-	teardown (cu);
 }
 
 static void
-test_create_missing_attribute (CuTest *cu)
+test_create_missing_attribute (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension) },
@@ -842,25 +1234,23 @@ test_create_missing_attribute (CuTest *cu)
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
-
-	setup (cu);
 
 	p11_message_quiet ();
 
 	attrs = NULL;
+	extra = NULL;
 	merge = p11_attrs_dup (input);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_TEMPLATE_INCOMPLETE, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_TEMPLATE_INCOMPLETE, rv);
 	p11_attrs_free (merge);
 
 	p11_message_loud ();
-
-	teardown (cu);
 }
 
 static void
-test_create_no_class (CuTest *cu)
+test_create_no_class (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_VALUE, "the value", 9 },
@@ -869,25 +1259,23 @@ test_create_no_class (CuTest *cu)
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
-
-	setup (cu);
 
 	p11_message_quiet ();
 
 	attrs = NULL;
+	extra = NULL;
 	merge = p11_attrs_dup (input);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_TEMPLATE_INCOMPLETE, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_TEMPLATE_INCOMPLETE, rv);
 	p11_attrs_free (merge);
 
 	p11_message_loud ();
-
-	teardown (cu);
 }
 
 static void
-test_create_token_mismatch (CuTest *cu)
+test_create_token_mismatch (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &data, sizeof (data) },
@@ -897,25 +1285,23 @@ test_create_token_mismatch (CuTest *cu)
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
-
-	setup (cu);
 
 	p11_message_quiet ();
 
 	attrs = NULL;
+	extra = NULL;
 	merge = p11_attrs_dup (input);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_TEMPLATE_INCONSISTENT, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_TEMPLATE_INCONSISTENT, rv);
 	p11_attrs_free (merge);
 
 	p11_message_loud ();
-
-	teardown (cu);
 }
 
 static void
-test_modify_success (CuTest *cu)
+test_modify_success (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &data, sizeof (data) },
@@ -939,25 +1325,30 @@ test_modify_success (CuTest *cu)
 	};
 
 	CK_ATTRIBUTE *attrs;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
 
-	setup (cu);
-
 	attrs = NULL;
-	rv = p11_builder_build (test.builder, test.index, &attrs, p11_attrs_dup (input));
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	extra = NULL;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
 
-	rv = p11_builder_build (test.builder, test.index, &attrs, p11_attrs_dup (modify));
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	attrs = p11_attrs_merge (attrs, p11_attrs_dup (input), true);
+	attrs = p11_attrs_merge (attrs, extra, false);
 
-	test_check_attrs (cu, expected, attrs);
+	extra = NULL;
+	rv = p11_builder_build (test.builder, test.index, attrs, modify, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	attrs = p11_attrs_merge (attrs, p11_attrs_dup (modify), true);
+	attrs = p11_attrs_merge (attrs, extra, false);
+
+	test_check_attrs (expected, attrs);
 	p11_attrs_free (attrs);
-
-	teardown (cu);
 }
 
 static void
-test_modify_read_only (CuTest *cu)
+test_modify_read_only (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &data, sizeof (data) },
@@ -973,31 +1364,33 @@ test_modify_read_only (CuTest *cu)
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
 
-	setup (cu);
-
 	attrs = NULL;
+	extra = NULL;
 	merge = p11_attrs_dup (input);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	attrs = p11_attrs_merge (attrs, merge, true);
+	attrs = p11_attrs_merge (attrs, extra, false);
 
 	p11_message_quiet ();
 
+	extra = NULL;
 	merge = p11_attrs_dup (modify);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_ATTRIBUTE_READ_ONLY, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_READ_ONLY, rv);
 	p11_attrs_free (merge);
 
 	p11_message_loud ();
 
 	p11_attrs_free (attrs);
-
-	teardown (cu);
 }
 
 static void
-test_modify_unchanged (CuTest *cu)
+test_modify_unchanged (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &data, sizeof (data) },
@@ -1024,25 +1417,29 @@ test_modify_unchanged (CuTest *cu)
 	};
 
 	CK_ATTRIBUTE *attrs;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
 
-	setup (cu);
-
 	attrs = NULL;
-	rv = p11_builder_build (test.builder, test.index, &attrs, p11_attrs_dup (input));
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
 
-	rv = p11_builder_build (test.builder, test.index, &attrs, p11_attrs_dup (modify));
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	attrs = p11_attrs_merge (attrs, p11_attrs_dup (input), true);
+	attrs = p11_attrs_merge (attrs, extra, false);
 
-	test_check_attrs (cu, expected, attrs);
+	extra = NULL;
+	rv = p11_builder_build (test.builder, test.index, attrs, modify, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	attrs = p11_attrs_merge (attrs, p11_attrs_dup (modify), true);
+	attrs = p11_attrs_merge (attrs, extra, false);
+
+	test_check_attrs (expected, attrs);
 	p11_attrs_free (attrs);
-
-	teardown (cu);
 }
 
 static void
-test_modify_not_modifiable (CuTest *cu)
+test_modify_not_modifiable (void)
 {
 	CK_ATTRIBUTE input[] = {
 		{ CKA_CLASS, &data, sizeof (data) },
@@ -1058,26 +1455,28 @@ test_modify_not_modifiable (CuTest *cu)
 
 	CK_ATTRIBUTE *attrs;
 	CK_ATTRIBUTE *merge;
+	CK_ATTRIBUTE *extra;
 	CK_RV rv;
 
-	setup (cu);
-
 	attrs = NULL;
-	rv = p11_builder_build (test.builder, test.index, &attrs, p11_attrs_dup (input));
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	extra = NULL;
+	rv = p11_builder_build (test.builder, test.index, attrs, input, &extra);
+	assert_num_eq (CKR_OK, rv);
+
+	attrs = p11_attrs_merge (attrs, p11_attrs_dup (input), true);
+	attrs = p11_attrs_merge (attrs, extra, false);
 
 	p11_message_quiet ();
 
+	extra = NULL;
 	merge = p11_attrs_dup (modify);
-	rv = p11_builder_build (test.builder, test.index, &attrs, merge);
-	CuAssertIntEquals (cu, CKR_ATTRIBUTE_READ_ONLY, rv);
+	rv = p11_builder_build (test.builder, test.index, attrs, merge, &extra);
+	assert_num_eq (CKR_ATTRIBUTE_READ_ONLY, rv);
 	p11_attrs_free (merge);
 
 	p11_message_loud ();
 
 	p11_attrs_free (attrs);
-
-	teardown (cu);
 }
 
 static CK_ATTRIBUTE cacert3_assert_distrust_server[] = {
@@ -1161,7 +1560,7 @@ static CK_ATTRIBUTE cacert3_assert_distrust_time[] = {
 };
 
 static void
-test_changed_trusted_certificate (CuTest *cu)
+test_changed_trusted_certificate (void)
 {
 	static CK_ATTRIBUTE cacert3_trusted_certificate[] = {
 		{ CKA_CLASS, &certificate, sizeof (certificate) },
@@ -1181,29 +1580,31 @@ test_changed_trusted_certificate (CuTest *cu)
 	};
 
 	static unsigned char eku_server_and_client[] = {
-		0x30, 0x14, 0x06, 0x08, 0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01, 0x06, 0x08, 0x2b, 0x06,
-		0x01, 0x05, 0x05, 0x07, 0x03, 0x02,
+		0x30, 0x20, 0x06, 0x03, 0x55, 0x1d, 0x25, 0x01, 0x01, 0xff, 0x04, 0x16, 0x30, 0x14, 0x06, 0x08,
+		0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01, 0x06, 0x08, 0x2b, 0x06, 0x01, 0x05, 0x05, 0x07,
+		0x03, 0x02,
 	};
 
 	CK_ATTRIBUTE eku_extension_server_and_client[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension), },
 		{ CKA_OBJECT_ID, (void *)P11_OID_EXTENDED_KEY_USAGE, sizeof (P11_OID_EXTENDED_KEY_USAGE) },
+		{ CKA_PUBLIC_KEY_INFO, (void *)test_cacert3_ca_public_key, sizeof (test_cacert3_ca_public_key) },
 		{ CKA_LABEL, "Custom Label", 12 },
-		{ CKA_X_CRITICAL, &truev, sizeof (truev) },
 		{ CKA_VALUE, eku_server_and_client, sizeof (eku_server_and_client) },
 		{ CKA_ID, "cacert3", 7 },
 		{ CKA_INVALID },
 	};
 
 	static char eku_client_email[] = {
+		0x30, 0x1a, 0x06, 0x0a, 0x2b, 0x06, 0x01, 0x04, 0x01, 0x99, 0x77, 0x06, 0x0a, 0x01, 0x04, 0x0c,
 		0x30, 0x0a, 0x06, 0x08, 0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x04,
 	};
 
 	static CK_ATTRIBUTE reject_extension_email[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension), },
 		{ CKA_OBJECT_ID, (void *)P11_OID_OPENSSL_REJECT, sizeof (P11_OID_OPENSSL_REJECT) },
+		{ CKA_PUBLIC_KEY_INFO, (void *)test_cacert3_ca_public_key, sizeof (test_cacert3_ca_public_key) },
 		{ CKA_LABEL, "Custom Label", 12 },
-		{ CKA_X_CRITICAL, &falsev, sizeof (falsev) },
 		{ CKA_VALUE, eku_client_email, sizeof (eku_client_email) },
 		{ CKA_ID, "cacert3", 7 },
 		{ CKA_INVALID },
@@ -1275,38 +1676,34 @@ test_changed_trusted_certificate (CuTest *cu)
 	CK_RV rv;
 	int i;
 
-	setup (cu);
-
 	/*
 	 * A trusted cetrificate, trusted for server and client purposes,
 	 * and explicitly rejects the email and timestamping purposes.
 	 */
-	p11_index_batch (test.index);
+	p11_index_load (test.index);
 	rv = p11_index_take (test.index, p11_attrs_dup (cacert3_trusted_certificate), NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 	rv = p11_index_take (test.index, p11_attrs_dup (eku_extension_server_and_client), NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 	rv = p11_index_take (test.index, p11_attrs_dup (reject_extension_email), NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 	p11_index_finish (test.index);
 
 
 	/* The other objects */
 	for (i = 0; expected[i]; i++) {
 		handle = p11_index_find (test.index, expected[i], 2);
-		CuAssertTrue (cu, handle != 0);
+		assert (handle != 0);
 
 		attrs = p11_index_lookup (test.index, handle);
-		CuAssertPtrNotNull (cu, attrs);
+		assert_ptr_not_null (attrs);
 
-		test_check_attrs (cu, expected[i], attrs);
+		test_check_attrs (expected[i], attrs);
 	}
-
-	teardown (cu);
 }
 
 static void
-test_changed_distrust_value (CuTest *cu)
+test_changed_distrust_value (void)
 {
 	CK_ATTRIBUTE distrust_cert[] = {
 		{ CKA_CLASS, &certificate, sizeof (certificate), },
@@ -1324,8 +1721,8 @@ test_changed_distrust_value (CuTest *cu)
 	CK_ATTRIBUTE eku_extension[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension), },
 		{ CKA_OBJECT_ID, (void *)P11_OID_EXTENDED_KEY_USAGE, sizeof (P11_OID_EXTENDED_KEY_USAGE) },
-		{ CKA_X_CRITICAL, &truev, sizeof (truev) },
-		{ CKA_VALUE, "\x30\x0c\x06\x0a\x2b\x06\x01\x04\x01\x99\x77\x06\x0a\x10", 14 },
+		{ CKA_VALUE, "\x30\x18\x06\x03\x55\x1d\x25\x01\x01\xff\x04\x0e\x30\x0c\x06\x0a\x2b\x06\x01\x04\x01\x99\x77\x06\x0a\x10", 26 },
+		{ CKA_PUBLIC_KEY_INFO, (void *)test_cacert3_ca_public_key, sizeof (test_cacert3_ca_public_key) },
 		{ CKA_ID, "cacert3", 7 },
 		{ CKA_INVALID },
 	};
@@ -1333,8 +1730,8 @@ test_changed_distrust_value (CuTest *cu)
 	CK_ATTRIBUTE reject_extension[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension), },
 		{ CKA_OBJECT_ID, (void *)P11_OID_OPENSSL_REJECT, sizeof (P11_OID_OPENSSL_REJECT) },
-		{ CKA_X_CRITICAL, &falsev, sizeof (falsev) },
-		{ CKA_VALUE, "\x30\x0a\x06\x08\x2b\x06\x01\x05\x05\x07\x03\x02", 12 },
+		{ CKA_VALUE, "\x30\x1a\x06\x0a\x2b\x06\x01\x04\x01\x99\x77\x06\x0a\x01\x04\x0c\x30\x0a\x06\x08\x2b\x06\x01\x05\x05\x07\x03\x02", 28 },
+		{ CKA_PUBLIC_KEY_INFO, (void *)test_cacert3_ca_public_key, sizeof (test_cacert3_ca_public_key) },
 		{ CKA_ID, "cacert3", 7 },
 		{ CKA_INVALID },
 	};
@@ -1389,37 +1786,33 @@ test_changed_distrust_value (CuTest *cu)
 	CK_RV rv;
 	int i;
 
-	setup (cu);
-
 	/*
 	 * A distrusted certificate with a value, plus some extra
 	 * extensions (which should be ignored).
 	 */
-	p11_index_batch (test.index);
+	p11_index_load (test.index);
 	rv = p11_index_take (test.index, p11_attrs_dup (distrust_cert), NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 	rv = p11_index_take (test.index, p11_attrs_dup (eku_extension), NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 	rv = p11_index_take (test.index, p11_attrs_dup (reject_extension), NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 	p11_index_finish (test.index);
 
 	/* The other objects */
 	for (i = 0; expected[i]; i++) {
 		handle = p11_index_find (test.index, expected[i], 2);
-		CuAssertTrue (cu, handle != 0);
+		assert (handle != 0);
 
 		attrs = p11_index_lookup (test.index, handle);
-		CuAssertPtrNotNull (cu, attrs);
+		assert_ptr_not_null (attrs);
 
-		test_check_attrs (cu, expected[i], attrs);
+		test_check_attrs (expected[i], attrs);
 	}
-
-	teardown (cu);
 }
 
 static void
-test_changed_distrust_serial (CuTest *cu)
+test_changed_distrust_serial (void)
 {
 	CK_ATTRIBUTE distrust_cert[] = {
 		{ CKA_CLASS, &certificate, sizeof (certificate), },
@@ -1479,29 +1872,25 @@ test_changed_distrust_serial (CuTest *cu)
 	CK_RV rv;
 	int i;
 
-	setup (cu);
-
 	/*
 	 * A distrusted certificate without a value.
 	 */
-	p11_index_batch (test.index);
+	p11_index_load (test.index);
 	rv = p11_index_take (test.index, p11_attrs_dup (distrust_cert), NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 	p11_index_finish (test.index);
 
 	for (i = 0; expected[i]; i++) {
 		handle = p11_index_find (test.index, expected[i], 2);
-		CuAssertTrue (cu, handle != 0);
+		assert (handle != 0);
 		attrs = p11_index_lookup (test.index, handle);
-		CuAssertPtrNotNull (cu, attrs);
-		test_check_attrs (cu, expected[i], attrs);
+		assert_ptr_not_null (attrs);
+		test_check_attrs (expected[i], attrs);
 	}
-
-	teardown (cu);
 }
 
 static void
-test_changed_dup_certificates (CuTest *cu)
+test_changed_dup_certificates (void)
 {
 	static CK_ATTRIBUTE trusted_cert[] = {
 		{ CKA_CLASS, &certificate, sizeof (certificate) },
@@ -1583,68 +1972,64 @@ test_changed_dup_certificates (CuTest *cu)
 	CK_OBJECT_HANDLE handle;
 	CK_RV rv;
 
-	setup (cu);
-
 	/*
 	 * A trusted certificate, should create trutsed nss trust
 	 * and anchor assertions
 	 */
-	p11_index_batch (test.index);
+	p11_index_load (test.index);
 	rv = p11_index_take (test.index, p11_attrs_dup (trusted_cert), &handle1);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 	p11_index_finish (test.index);
 
 	handle = p11_index_find (test.index, match_nss, -1);
-	CuAssertTrue (cu, handle != 0);
+	assert (handle != 0);
 	handle = p11_index_find (test.index, match_assertion, -1);
-	CuAssertTrue (cu, handle != 0);
+	assert (handle != 0);
 	handle = p11_index_find (test.index, trusted_nss, -1);
-	CuAssertTrue (cu, handle != 0);
+	assert (handle != 0);
 	handle = p11_index_find (test.index, anchor_assertion, -1);
-	CuAssertTrue (cu, handle != 0);
+	assert (handle != 0);
 
 	/* Now we add a distrusted certificate, should update the objects */
-	p11_index_batch (test.index);
+	p11_index_load (test.index);
 	rv = p11_index_take (test.index, p11_attrs_dup (distrust_cert), &handle2);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 	p11_index_finish (test.index);
 
 	handle = p11_index_find (test.index, trusted_nss, -1);
-	CuAssertTrue (cu, handle == 0);
+	assert (handle == 0);
 	handle = p11_index_find (test.index, distrust_nss, -1);
-	CuAssertTrue (cu, handle != 0);
+	assert (handle != 0);
 	handle = p11_index_find (test.index, anchor_assertion, -1);
-	CuAssertTrue (cu, handle == 0);
+	assert (handle == 0);
 	handle = p11_index_find (test.index, distrust_assertion, -1);
-	CuAssertTrue (cu, handle != 0);
+	assert (handle != 0);
 
 	/* Now remove the trusted cetrificate, should update again */
 	rv = p11_index_remove (test.index, handle2);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 
 	handle = p11_index_find (test.index, trusted_nss, -1);
-	CuAssertTrue (cu, handle != 0);
+	assert (handle != 0);
 	handle = p11_index_find (test.index, distrust_nss, -1);
-	CuAssertTrue (cu, handle == 0);
+	assert (handle == 0);
 	handle = p11_index_find (test.index, anchor_assertion, -1);
-	CuAssertTrue (cu, handle != 0);
+	assert (handle != 0);
 	handle = p11_index_find (test.index, distrust_assertion, -1);
-	CuAssertTrue (cu, handle == 0);
+	assert (handle == 0);
 
 	/* Now remove the original certificate, unknown nss and no assertions */
 	rv = p11_index_remove (test.index, handle1);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 
 	handle = p11_index_find (test.index, unknown_nss, -1);
-	CuAssertTrue (cu, handle != 0);
+	assert (handle != 0);
 	handle = p11_index_find (test.index, match_assertion, -1);
-	CuAssertTrue (cu, handle == 0);
-
-	teardown (cu);
+	assert (handle == 0);
 }
 
 static void
-test_changed_without_id (CuTest *cu)
+test_changed_without_id (void)
 {
 	static CK_ATTRIBUTE trusted_without_id[] = {
 		{ CKA_CLASS, &certificate, sizeof (certificate) },
@@ -1670,33 +2055,30 @@ test_changed_without_id (CuTest *cu)
 	CK_OBJECT_HANDLE handle;
 	CK_RV rv;
 
-	setup (cu);
-
-	p11_index_batch (test.index);
+	p11_index_load (test.index);
 	rv = p11_index_take (test.index, p11_attrs_dup (trusted_without_id), NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 	p11_index_finish (test.index);
 
 	klass = CKO_NSS_TRUST;
 	handle = p11_index_find (test.index, match, -1);
-	CuAssertTrue (cu, handle != 0);
+	assert (handle != 0);
 
 	klass = CKO_X_TRUST_ASSERTION;
 	handle = p11_index_find (test.index, match, -1);
-	CuAssertTrue (cu, handle != 0);
-
-	teardown (cu);
+	assert (handle != 0);
 }
 
 static void
-test_changed_staple_ca (CuTest *cu)
+test_changed_staple_ca (void)
 {
 	CK_ULONG category = 0;
 
 	CK_ATTRIBUTE stapled[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension) },
 		{ CKA_OBJECT_ID, (void *)P11_OID_BASIC_CONSTRAINTS, sizeof (P11_OID_BASIC_CONSTRAINTS) },
-		{ CKA_VALUE, "\x30\x03\x01\x01\xFF", 5 },
+		{ CKA_VALUE, "\x30\x0c\x06\x03\x55\x1d\x13\x04\x05\x30\x03\x01\x01\xff", 14 },
+		{ CKA_PUBLIC_KEY_INFO, (void *)entrust_public_key, sizeof (entrust_public_key) },
 		{ CKA_ID, "the id", 6 },
 		{ CKA_INVALID },
 	};
@@ -1718,36 +2100,33 @@ test_changed_staple_ca (CuTest *cu)
 	CK_ATTRIBUTE *attrs;
 	CK_RV rv;
 
-	setup (cu);
-
 	attrs = NULL;
 	rv = p11_index_take (test.index, p11_attrs_dup (input), NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 
 	/* Not a CA at this point, until we staple */
 	category = 0;
-	CuAssertTrue (cu, p11_index_find (test.index, match, -1) == 0);
+	assert (p11_index_find (test.index, match, -1) == 0);
 
 	/* Add a stapled basic constraint */
 	rv = p11_index_add (test.index, stapled, 4, NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 
 	/* Now should be a CA */
 	category = 2;
-	CuAssertTrue (cu, p11_index_find (test.index, match, -1) != 0);
+	assert (p11_index_find (test.index, match, -1) != 0);
 
 	p11_attrs_free (attrs);
-
-	teardown (cu);
 }
 
 static void
-test_changed_staple_ku (CuTest *cu)
+test_changed_staple_ku (void)
 {
 	CK_ATTRIBUTE stapled_ds_and_np[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension) },
 		{ CKA_OBJECT_ID, (void *)P11_OID_KEY_USAGE, sizeof (P11_OID_KEY_USAGE) },
-		{ CKA_VALUE, "\x03\x03\x07\xc0\x00", 5 },
+		{ CKA_VALUE, "\x30\x0c\x06\x03\x55\x1d\x0f\x04\x05\x03\x03\x07\xc0\x00", 14 },
+		{ CKA_PUBLIC_KEY_INFO, (void *)entrust_public_key, sizeof (entrust_public_key) },
 		{ CKA_ID, "the id", 6 },
 		{ CKA_INVALID },
 	};
@@ -1786,76 +2165,73 @@ test_changed_staple_ku (CuTest *cu)
 	CK_ATTRIBUTE *attrs;
 	CK_RV rv;
 
-	setup (cu);
-
-	p11_index_batch (test.index);
+	p11_index_load (test.index);
 	rv = p11_index_take (test.index, p11_attrs_dup (input), NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 	rv = p11_index_take (test.index, p11_attrs_dup (stapled_ds_and_np), NULL);
-	CuAssertIntEquals (cu, CKR_OK, rv);
+	assert_num_eq (CKR_OK, rv);
 	p11_index_finish (test.index);
 
 	handle = p11_index_find (test.index, nss_trust_ds_and_np, 2);
-	CuAssertTrue (cu, handle != 0);
+	assert (handle != 0);
 
 	attrs = p11_index_lookup (test.index, handle);
-	test_check_attrs (cu, nss_trust_ds_and_np, attrs);
-
-	teardown (cu);
+	test_check_attrs (nss_trust_ds_and_np, attrs);
 }
 
 int
-main (void)
+main (int argc,
+      char *argv[])
 {
-	CuString *output = CuStringNew ();
-	CuSuite* suite = CuSuiteNew ();
-	int ret;
+	p11_fixture (setup, teardown);
+	p11_test (test_get_cache, "/builder/get_cache");
+	p11_test (test_build_data, "/builder/build_data");
+	p11_test (test_build_certificate, "/builder/build_certificate");
+	p11_test (test_build_certificate_empty, "/builder/build_certificate_empty");
+	p11_test (test_build_certificate_non_ca, "/builder/build_certificate_non_ca");
+	p11_test (test_build_certificate_v1_ca, "/builder/build_certificate_v1_ca");
+	p11_test (test_build_certificate_staple_ca, "/builder/build_certificate_staple_ca");
+	p11_test (test_build_certificate_staple_ca_backwards, "/builder/build-certificate-staple-ca-backwards");
+	p11_test (test_build_certificate_no_type, "/builder/build_certificate_no_type");
+	p11_test (test_build_certificate_bad_type, "/builder/build_certificate_bad_type");
+	p11_test (test_build_extension, "/builder/build_extension");
+	p11_test (test_build_distant_end_date, "/builder/build_distant_end_date");
 
-	putenv ("P11_KIT_STRICT=1");
-	p11_debug_init ();
-	/* p11_message_quiet (); */
+	p11_test (test_valid_bool, "/builder/valid-bool");
+	p11_test (test_valid_ulong, "/builder/valid-ulong");
+	p11_test (test_valid_utf8, "/builder/valid-utf8");
+	p11_test (test_valid_dates, "/builder/valid-date");
+	p11_test (test_valid_name, "/builder/valid-name");
+	p11_test (test_valid_serial, "/builder/valid-serial");
+	p11_test (test_valid_cert, "/builder/valid-cert");
+	p11_test (test_invalid_bool, "/builder/invalid-bool");
+	p11_test (test_invalid_ulong, "/builder/invalid-ulong");
+	p11_test (test_invalid_utf8, "/builder/invalid-utf8");
+	p11_test (test_invalid_dates, "/builder/invalid-date");
+	p11_test (test_invalid_name, "/builder/invalid-name");
+	p11_test (test_invalid_serial, "/builder/invalid-serial");
+	p11_test (test_invalid_cert, "/builder/invalid-cert");
+	p11_test (test_invalid_schema, "/builder/invalid-schema");
 
-	SUITE_ADD_TEST (suite, test_get_cache);
-	SUITE_ADD_TEST (suite, test_build_data);
-	SUITE_ADD_TEST (suite, test_build_certificate);
-	SUITE_ADD_TEST (suite, test_build_certificate_empty);
-	SUITE_ADD_TEST (suite, test_build_certificate_non_ca);
-	SUITE_ADD_TEST (suite, test_build_certificate_v1_ca);
-	SUITE_ADD_TEST (suite, test_build_certificate_staple_ca);
-	SUITE_ADD_TEST (suite, test_build_certificate_staple_ca_backwards);
-	SUITE_ADD_TEST (suite, test_build_certificate_staple_ca_specific_id);
-	SUITE_ADD_TEST (suite, test_build_certificate_no_type);
-	SUITE_ADD_TEST (suite, test_build_certificate_bad_type);
-	SUITE_ADD_TEST (suite, test_build_extension);
-	SUITE_ADD_TEST (suite, test_build_distant_end_date);
-	SUITE_ADD_TEST (suite, test_create_not_settable);
-	SUITE_ADD_TEST (suite, test_create_but_loadable);
-	SUITE_ADD_TEST (suite, test_create_unsupported);
-	SUITE_ADD_TEST (suite, test_create_generated);
-	SUITE_ADD_TEST (suite, test_create_bad_attribute);
-	SUITE_ADD_TEST (suite, test_create_missing_attribute);
-	SUITE_ADD_TEST (suite, test_create_no_class);
-	SUITE_ADD_TEST (suite, test_create_token_mismatch);
-	SUITE_ADD_TEST (suite, test_modify_success);
-	SUITE_ADD_TEST (suite, test_modify_read_only);
-	SUITE_ADD_TEST (suite, test_modify_unchanged);
-	SUITE_ADD_TEST (suite, test_modify_not_modifiable);
+	p11_test (test_create_not_settable, "/builder/create_not_settable");
+	p11_test (test_create_but_loadable, "/builder/create_but_loadable");
+	p11_test (test_create_unsupported, "/builder/create_unsupported");
+	p11_test (test_create_generated, "/builder/create_generated");
+	p11_test (test_create_bad_attribute, "/builder/create_bad_attribute");
+	p11_test (test_create_missing_attribute, "/builder/create_missing_attribute");
+	p11_test (test_create_no_class, "/builder/create_no_class");
+	p11_test (test_create_token_mismatch, "/builder/create_token_mismatch");
+	p11_test (test_modify_success, "/builder/modify_success");
+	p11_test (test_modify_read_only, "/builder/modify_read_only");
+	p11_test (test_modify_unchanged, "/builder/modify_unchanged");
+	p11_test (test_modify_not_modifiable, "/builder/modify_not_modifiable");
 
-	SUITE_ADD_TEST (suite, test_changed_trusted_certificate);
-	SUITE_ADD_TEST (suite, test_changed_distrust_value);
-	SUITE_ADD_TEST (suite, test_changed_distrust_serial);
-	SUITE_ADD_TEST (suite, test_changed_without_id);
-	SUITE_ADD_TEST (suite, test_changed_staple_ca);
-	SUITE_ADD_TEST (suite, test_changed_staple_ku);
-	SUITE_ADD_TEST (suite, test_changed_dup_certificates);
-
-	CuSuiteRun (suite);
-	CuSuiteSummary (suite, output);
-	CuSuiteDetails (suite, output);
-	printf ("%s\n", output->buffer);
-	ret = suite->failCount;
-	CuSuiteDelete (suite);
-	CuStringDelete (output);
-
-	return ret;
+	p11_test (test_changed_trusted_certificate, "/builder/changed_trusted_certificate");
+	p11_test (test_changed_distrust_value, "/builder/changed_distrust_value");
+	p11_test (test_changed_distrust_serial, "/builder/changed_distrust_serial");
+	p11_test (test_changed_without_id, "/builder/changed_without_id");
+	p11_test (test_changed_staple_ca, "/builder/changed_staple_ca");
+	p11_test (test_changed_staple_ku, "/builder/changed_staple_ku");
+	p11_test (test_changed_dup_certificates, "/builder/changed_dup_certificates");
+	return p11_test_run (argc, argv);
 }

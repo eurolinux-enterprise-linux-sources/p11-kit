@@ -11,11 +11,9 @@ TRUST_DIR =
 endif
 
 SUBDIRS = \
-	build \
 	common \
 	p11-kit \
 	$(TRUST_DIR) \
-	tools \
 	doc \
 	po
 
@@ -23,7 +21,9 @@ ACLOCAL_AMFLAGS = -I build/m4
 
 DISTCHECK_CONFIGURE_FLAGS = \
 	--enable-doc \
-	--disable-coverage
+	--disable-coverage \
+	--enable-strict \
+	CFLAGS='-O2'
 
 dist-hook:
 	@if test -d "$(srcdir)/.git"; \
@@ -65,7 +65,8 @@ upload-release: $(DIST_ARCHIVES)
 	scp $(DIST_ARCHIVES) $(DIST_ARCHIVES).sig $(WEBHOST):$(WEBBASE)/releases/
 
 EXTRA_DIST = \
-	config.rpath \
+	build/Makefile.tests \
+	build/Makefile.decl \
 	HACKING
 
 transifex:

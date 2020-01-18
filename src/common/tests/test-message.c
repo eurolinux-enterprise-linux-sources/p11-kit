@@ -33,18 +33,15 @@
  */
 
 #include "config.h"
-#include "CuTest.h"
+#include "test.h"
 
 #include "message.h"
 
-#include <assert.h>
 #include <errno.h>
-#include <string.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 static void
-test_with_err (CuTest *tc)
+test_with_err (void)
 {
 	const char *last;
 	char *expected;
@@ -54,29 +51,15 @@ test_with_err (CuTest *tc)
 	last = p11_message_last ();
 
 	if (asprintf (&expected, "Details: value: %s", strerror (ENOENT)) < 0)
-		assert (false);
-	CuAssertStrEquals (tc, expected, last);
+		assert_not_reached ();
+	assert_str_eq (expected, last);
 	free (expected);
 }
 
 int
-main (void)
+main (int argc,
+      char *argv[])
 {
-	CuString *output = CuStringNew ();
-	CuSuite* suite = CuSuiteNew ();
-	int ret;
-
-	putenv ("P11_KIT_STRICT=1");
-
-	SUITE_ADD_TEST (suite, test_with_err);
-
-	CuSuiteRun (suite);
-	CuSuiteSummary (suite, output);
-	CuSuiteDetails (suite, output);
-	printf ("%s\n", output->buffer);
-	ret = suite->failCount;
-	CuSuiteDelete (suite);
-	CuStringDelete (output);
-
-	return ret;
+	p11_test (test_with_err, "/message/with-err");
+	return p11_test_run (argc, argv);
 }

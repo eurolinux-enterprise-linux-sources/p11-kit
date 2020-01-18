@@ -79,37 +79,9 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 DIST_COMMON = $(top_srcdir)/build/Makefile.tests $(srcdir)/Makefile.in \
-	$(srcdir)/Makefile.am $(top_srcdir)/depcomp
-noinst_PROGRAMS = frob-getauxval$(EXEEXT) $(am__EXEEXT_3) \
-	$(am__EXEEXT_4)
-@WITH_ASN1_TRUE@am__append_1 = \
-@WITH_ASN1_TRUE@	$(top_builddir)/common/libp11-data.la \
-@WITH_ASN1_TRUE@	$(LIBTASN1_LIBS) \
-@WITH_ASN1_TRUE@	$(NULL)
-
-@WITH_ASN1_TRUE@am__append_2 = \
-@WITH_ASN1_TRUE@	$(LIBTASN1_CFLAGS) \
-@WITH_ASN1_TRUE@	$(NULL)
-
-@WITH_ASN1_TRUE@am__append_3 = \
-@WITH_ASN1_TRUE@	test-asn1 \
-@WITH_ASN1_TRUE@	test-base64 \
-@WITH_ASN1_TRUE@	test-lexer \
-@WITH_ASN1_TRUE@	test-pem \
-@WITH_ASN1_TRUE@	test-oid \
-@WITH_ASN1_TRUE@	test-utf8 \
-@WITH_ASN1_TRUE@	test-x509 \
-@WITH_ASN1_TRUE@	$(NULL)
-
-@WITH_ASN1_TRUE@am__append_4 = \
-@WITH_ASN1_TRUE@	frob-cert \
-@WITH_ASN1_TRUE@	frob-ku \
-@WITH_ASN1_TRUE@	frob-eku \
-@WITH_ASN1_TRUE@	frob-cert \
-@WITH_ASN1_TRUE@	frob-oid \
-@WITH_ASN1_TRUE@	$(NULL)
-
-TESTS = $(am__EXEEXT_3)
+	$(srcdir)/Makefile.am $(top_srcdir)/build/litter/depcomp
+noinst_PROGRAMS = frob-getauxval$(EXEEXT) $(am__EXEEXT_2)
+TESTS = $(am__EXEEXT_2)
 subdir = common/tests
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/build/m4/gettext.m4 \
@@ -131,165 +103,95 @@ CONFIG_HEADER = $(top_builddir)/config.h
 CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 am__EXEEXT_1 =
-@WITH_ASN1_TRUE@am__EXEEXT_2 = test-asn1$(EXEEXT) test-base64$(EXEEXT) \
-@WITH_ASN1_TRUE@	test-lexer$(EXEEXT) test-pem$(EXEEXT) \
-@WITH_ASN1_TRUE@	test-oid$(EXEEXT) test-utf8$(EXEEXT) \
-@WITH_ASN1_TRUE@	test-x509$(EXEEXT) $(am__EXEEXT_1)
-am__EXEEXT_3 = test-tests$(EXEEXT) test-compat$(EXEEXT) \
+am__EXEEXT_2 = test-tests$(EXEEXT) test-compat$(EXEEXT) \
 	test-hash$(EXEEXT) test-dict$(EXEEXT) test-array$(EXEEXT) \
 	test-constants$(EXEEXT) test-attrs$(EXEEXT) \
 	test-buffer$(EXEEXT) test-url$(EXEEXT) test-path$(EXEEXT) \
-	test-message$(EXEEXT) $(am__EXEEXT_1) $(am__EXEEXT_2)
-@WITH_ASN1_TRUE@am__EXEEXT_4 = frob-cert$(EXEEXT) frob-ku$(EXEEXT) \
-@WITH_ASN1_TRUE@	frob-eku$(EXEEXT) frob-cert$(EXEEXT) \
-@WITH_ASN1_TRUE@	frob-oid$(EXEEXT) $(am__EXEEXT_1)
+	test-lexer$(EXEEXT) test-message$(EXEEXT) $(am__EXEEXT_1)
 PROGRAMS = $(noinst_PROGRAMS)
-frob_cert_SOURCES = frob-cert.c
-frob_cert_OBJECTS = frob-cert.$(OBJEXT)
-frob_cert_LDADD = $(LDADD)
+frob_getauxval_SOURCES = frob-getauxval.c
+frob_getauxval_OBJECTS = frob-getauxval.$(OBJEXT)
+frob_getauxval_LDADD = $(LDADD)
 am__DEPENDENCIES_1 =
-@WITH_ASN1_TRUE@am__DEPENDENCIES_2 =  \
-@WITH_ASN1_TRUE@	$(top_builddir)/common/libp11-data.la \
-@WITH_ASN1_TRUE@	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
-frob_cert_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
+frob_getauxval_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
 am__v_lt_0 = --silent
 am__v_lt_1 = 
-frob_eku_SOURCES = frob-eku.c
-frob_eku_OBJECTS = frob-eku.$(OBJEXT)
-frob_eku_LDADD = $(LDADD)
-frob_eku_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
-frob_getauxval_SOURCES = frob-getauxval.c
-frob_getauxval_OBJECTS = frob-getauxval.$(OBJEXT)
-frob_getauxval_LDADD = $(LDADD)
-frob_getauxval_DEPENDENCIES = $(am__DEPENDENCIES_1) \
-	$(am__DEPENDENCIES_2) $(top_builddir)/common/libp11-common.la \
-	$(am__DEPENDENCIES_1) $(CUTEST_LIBS)
-frob_ku_SOURCES = frob-ku.c
-frob_ku_OBJECTS = frob-ku.$(OBJEXT)
-frob_ku_LDADD = $(LDADD)
-frob_ku_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
-frob_oid_SOURCES = frob-oid.c
-frob_oid_OBJECTS = frob-oid.$(OBJEXT)
-frob_oid_LDADD = $(LDADD)
-frob_oid_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
 test_array_SOURCES = test-array.c
 test_array_OBJECTS = test-array.$(OBJEXT)
 test_array_LDADD = $(LDADD)
-test_array_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
-test_asn1_SOURCES = test-asn1.c
-test_asn1_OBJECTS = test-asn1.$(OBJEXT)
-test_asn1_LDADD = $(LDADD)
-test_asn1_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
+test_array_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
 test_attrs_SOURCES = test-attrs.c
 test_attrs_OBJECTS = test-attrs.$(OBJEXT)
 test_attrs_LDADD = $(LDADD)
-test_attrs_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
-test_base64_SOURCES = test-base64.c
-test_base64_OBJECTS = test-base64.$(OBJEXT)
-test_base64_LDADD = $(LDADD)
-test_base64_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
+test_attrs_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
 test_buffer_SOURCES = test-buffer.c
 test_buffer_OBJECTS = test-buffer.$(OBJEXT)
 test_buffer_LDADD = $(LDADD)
-test_buffer_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
+test_buffer_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
 test_compat_SOURCES = test-compat.c
 test_compat_OBJECTS = test-compat.$(OBJEXT)
 test_compat_LDADD = $(LDADD)
-test_compat_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
+test_compat_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
 test_constants_SOURCES = test-constants.c
 test_constants_OBJECTS = test-constants.$(OBJEXT)
 test_constants_LDADD = $(LDADD)
 test_constants_DEPENDENCIES = $(am__DEPENDENCIES_1) \
-	$(am__DEPENDENCIES_2) $(top_builddir)/common/libp11-common.la \
-	$(am__DEPENDENCIES_1) $(CUTEST_LIBS)
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
 test_dict_SOURCES = test-dict.c
 test_dict_OBJECTS = test-dict.$(OBJEXT)
 test_dict_LDADD = $(LDADD)
-test_dict_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
+test_dict_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
 test_hash_SOURCES = test-hash.c
 test_hash_OBJECTS = test-hash.$(OBJEXT)
 test_hash_LDADD = $(LDADD)
-test_hash_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
+test_hash_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
 test_lexer_SOURCES = test-lexer.c
 test_lexer_OBJECTS = test-lexer.$(OBJEXT)
 test_lexer_LDADD = $(LDADD)
-test_lexer_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
+test_lexer_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
 test_message_SOURCES = test-message.c
 test_message_OBJECTS = test-message.$(OBJEXT)
 test_message_LDADD = $(LDADD)
 test_message_DEPENDENCIES = $(am__DEPENDENCIES_1) \
-	$(am__DEPENDENCIES_2) $(top_builddir)/common/libp11-common.la \
-	$(am__DEPENDENCIES_1) $(CUTEST_LIBS)
-test_oid_SOURCES = test-oid.c
-test_oid_OBJECTS = test-oid.$(OBJEXT)
-test_oid_LDADD = $(LDADD)
-test_oid_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
 test_path_SOURCES = test-path.c
 test_path_OBJECTS = test-path.$(OBJEXT)
 test_path_LDADD = $(LDADD)
-test_path_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
-test_pem_SOURCES = test-pem.c
-test_pem_OBJECTS = test-pem.$(OBJEXT)
-test_pem_LDADD = $(LDADD)
-test_pem_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
+test_path_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
 test_tests_SOURCES = test-tests.c
 test_tests_OBJECTS = test-tests.$(OBJEXT)
 test_tests_LDADD = $(LDADD)
-test_tests_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
+test_tests_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
 test_url_SOURCES = test-url.c
 test_url_OBJECTS = test-url.$(OBJEXT)
 test_url_LDADD = $(LDADD)
-test_url_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
-test_utf8_SOURCES = test-utf8.c
-test_utf8_OBJECTS = test-utf8.$(OBJEXT)
-test_utf8_LDADD = $(LDADD)
-test_utf8_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
-test_x509_SOURCES = test-x509.c
-test_x509_OBJECTS = test-x509.$(OBJEXT)
-test_x509_LDADD = $(LDADD)
-test_x509_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
-	$(top_builddir)/common/libp11-common.la $(am__DEPENDENCIES_1) \
-	$(CUTEST_LIBS)
+test_url_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
 am__v_P_0 = false
@@ -303,7 +205,7 @@ am__v_at_ = $(am__v_at_@AM_DEFAULT_V@)
 am__v_at_0 = @
 am__v_at_1 = 
 DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir)
-depcomp = $(SHELL) $(top_srcdir)/depcomp
+depcomp = $(SHELL) $(top_srcdir)/build/litter/depcomp
 am__depfiles_maybe = depfiles
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
@@ -324,16 +226,14 @@ AM_V_CCLD = $(am__v_CCLD_@AM_V@)
 am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
-SOURCES = frob-cert.c frob-eku.c frob-getauxval.c frob-ku.c frob-oid.c \
-	test-array.c test-asn1.c test-attrs.c test-base64.c \
+SOURCES = frob-getauxval.c test-array.c test-attrs.c test-buffer.c \
+	test-compat.c test-constants.c test-dict.c test-hash.c \
+	test-lexer.c test-message.c test-path.c test-tests.c \
+	test-url.c
+DIST_SOURCES = frob-getauxval.c test-array.c test-attrs.c \
 	test-buffer.c test-compat.c test-constants.c test-dict.c \
-	test-hash.c test-lexer.c test-message.c test-oid.c test-path.c \
-	test-pem.c test-tests.c test-url.c test-utf8.c test-x509.c
-DIST_SOURCES = frob-cert.c frob-eku.c frob-getauxval.c frob-ku.c \
-	frob-oid.c test-array.c test-asn1.c test-attrs.c test-base64.c \
-	test-buffer.c test-compat.c test-constants.c test-dict.c \
-	test-hash.c test-lexer.c test-message.c test-oid.c test-path.c \
-	test-pem.c test-tests.c test-url.c test-utf8.c test-x509.c
+	test-hash.c test-lexer.c test-message.c test-path.c \
+	test-tests.c test-url.c
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -428,6 +328,8 @@ INTL_MACOSX_LIBS = @INTL_MACOSX_LIBS@
 LCOV = @LCOV@
 LD = @LD@
 LDFLAGS = @LDFLAGS@
+LIBFFI_CFLAGS = @LIBFFI_CFLAGS@
+LIBFFI_LIBS = @LIBFFI_LIBS@
 LIBICONV = @LIBICONV@
 LIBINTL = @LIBINTL@
 LIBOBJS = @LIBOBJS@
@@ -541,25 +443,39 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 with_trust_paths = @with_trust_paths@
 NULL = 
-CUTEST_CFLAGS = \
-	-I$(top_srcdir)/build/cutest \
+TEST_CFLAGS = \
 	-DSRCDIR=\"$(abs_srcdir)\" \
 	-DBUILDDIR=\"$(abs_builddir)\" \
 	-DP11_KIT_FUTURE_UNSTABLE_API
 
-CUTEST_LIBS = $(top_builddir)/build/libcutest.la
 MEMCHECK_ENV = $(TEST_RUNNER) valgrind --error-exitcode=80 --quiet
 LEAKCHECK_ENV = $(TEST_RUNNER) valgrind --error-exitcode=81 --quiet --leak-check=yes
+HELLCHECK_ENV = $(TEST_RUNNER) valgrind --error-exitcode=82 --quiet --tool=helgrind
 COMMON = $(top_srcdir)/common
-INCLUDES = -I$(top_srcdir) -I$(srcdir)/.. -I$(COMMON) \
-	-DBUILDDIR=\"$(abs_builddir)\" $(CUTEST_CFLAGS) \
-	$(am__append_2)
-LDADD = $(NULL) $(am__append_1) \
-	$(top_builddir)/common/libp11-common.la $(HASH_LIBS) \
-	$(CUTEST_LIBS)
-CHECK_PROGS = test-tests test-compat test-hash test-dict test-array \
-	test-constants test-attrs test-buffer test-url test-path \
-	test-message $(NULL) $(am__append_3)
+AM_CPPFLAGS = \
+	-I$(top_srcdir) \
+	-I$(srcdir)/.. \
+	-I$(COMMON) \
+	-DBUILDDIR=\"$(abs_builddir)\" \
+	$(TEST_CFLAGS)
+
+LDADD = $(NULL) $(top_builddir)/common/libp11-test.la \
+	$(top_builddir)/common/libp11-common.la
+CHECK_PROGS = \
+	test-tests \
+	test-compat \
+	test-hash \
+	test-dict \
+	test-array \
+	test-constants \
+	test-attrs \
+	test-buffer \
+	test-url \
+	test-path \
+	test-lexer \
+	test-message \
+	$(NULL)
+
 all: all-am
 
 .SUFFIXES:
@@ -605,41 +521,17 @@ clean-noinstPROGRAMS:
 	echo " rm -f" $$list; \
 	rm -f $$list
 
-frob-cert$(EXEEXT): $(frob_cert_OBJECTS) $(frob_cert_DEPENDENCIES) $(EXTRA_frob_cert_DEPENDENCIES) 
-	@rm -f frob-cert$(EXEEXT)
-	$(AM_V_CCLD)$(LINK) $(frob_cert_OBJECTS) $(frob_cert_LDADD) $(LIBS)
-
-frob-eku$(EXEEXT): $(frob_eku_OBJECTS) $(frob_eku_DEPENDENCIES) $(EXTRA_frob_eku_DEPENDENCIES) 
-	@rm -f frob-eku$(EXEEXT)
-	$(AM_V_CCLD)$(LINK) $(frob_eku_OBJECTS) $(frob_eku_LDADD) $(LIBS)
-
 frob-getauxval$(EXEEXT): $(frob_getauxval_OBJECTS) $(frob_getauxval_DEPENDENCIES) $(EXTRA_frob_getauxval_DEPENDENCIES) 
 	@rm -f frob-getauxval$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(frob_getauxval_OBJECTS) $(frob_getauxval_LDADD) $(LIBS)
-
-frob-ku$(EXEEXT): $(frob_ku_OBJECTS) $(frob_ku_DEPENDENCIES) $(EXTRA_frob_ku_DEPENDENCIES) 
-	@rm -f frob-ku$(EXEEXT)
-	$(AM_V_CCLD)$(LINK) $(frob_ku_OBJECTS) $(frob_ku_LDADD) $(LIBS)
-
-frob-oid$(EXEEXT): $(frob_oid_OBJECTS) $(frob_oid_DEPENDENCIES) $(EXTRA_frob_oid_DEPENDENCIES) 
-	@rm -f frob-oid$(EXEEXT)
-	$(AM_V_CCLD)$(LINK) $(frob_oid_OBJECTS) $(frob_oid_LDADD) $(LIBS)
 
 test-array$(EXEEXT): $(test_array_OBJECTS) $(test_array_DEPENDENCIES) $(EXTRA_test_array_DEPENDENCIES) 
 	@rm -f test-array$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(test_array_OBJECTS) $(test_array_LDADD) $(LIBS)
 
-test-asn1$(EXEEXT): $(test_asn1_OBJECTS) $(test_asn1_DEPENDENCIES) $(EXTRA_test_asn1_DEPENDENCIES) 
-	@rm -f test-asn1$(EXEEXT)
-	$(AM_V_CCLD)$(LINK) $(test_asn1_OBJECTS) $(test_asn1_LDADD) $(LIBS)
-
 test-attrs$(EXEEXT): $(test_attrs_OBJECTS) $(test_attrs_DEPENDENCIES) $(EXTRA_test_attrs_DEPENDENCIES) 
 	@rm -f test-attrs$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(test_attrs_OBJECTS) $(test_attrs_LDADD) $(LIBS)
-
-test-base64$(EXEEXT): $(test_base64_OBJECTS) $(test_base64_DEPENDENCIES) $(EXTRA_test_base64_DEPENDENCIES) 
-	@rm -f test-base64$(EXEEXT)
-	$(AM_V_CCLD)$(LINK) $(test_base64_OBJECTS) $(test_base64_LDADD) $(LIBS)
 
 test-buffer$(EXEEXT): $(test_buffer_OBJECTS) $(test_buffer_DEPENDENCIES) $(EXTRA_test_buffer_DEPENDENCIES) 
 	@rm -f test-buffer$(EXEEXT)
@@ -669,17 +561,9 @@ test-message$(EXEEXT): $(test_message_OBJECTS) $(test_message_DEPENDENCIES) $(EX
 	@rm -f test-message$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(test_message_OBJECTS) $(test_message_LDADD) $(LIBS)
 
-test-oid$(EXEEXT): $(test_oid_OBJECTS) $(test_oid_DEPENDENCIES) $(EXTRA_test_oid_DEPENDENCIES) 
-	@rm -f test-oid$(EXEEXT)
-	$(AM_V_CCLD)$(LINK) $(test_oid_OBJECTS) $(test_oid_LDADD) $(LIBS)
-
 test-path$(EXEEXT): $(test_path_OBJECTS) $(test_path_DEPENDENCIES) $(EXTRA_test_path_DEPENDENCIES) 
 	@rm -f test-path$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(test_path_OBJECTS) $(test_path_LDADD) $(LIBS)
-
-test-pem$(EXEEXT): $(test_pem_OBJECTS) $(test_pem_DEPENDENCIES) $(EXTRA_test_pem_DEPENDENCIES) 
-	@rm -f test-pem$(EXEEXT)
-	$(AM_V_CCLD)$(LINK) $(test_pem_OBJECTS) $(test_pem_LDADD) $(LIBS)
 
 test-tests$(EXEEXT): $(test_tests_OBJECTS) $(test_tests_DEPENDENCIES) $(EXTRA_test_tests_DEPENDENCIES) 
 	@rm -f test-tests$(EXEEXT)
@@ -689,29 +573,15 @@ test-url$(EXEEXT): $(test_url_OBJECTS) $(test_url_DEPENDENCIES) $(EXTRA_test_url
 	@rm -f test-url$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(test_url_OBJECTS) $(test_url_LDADD) $(LIBS)
 
-test-utf8$(EXEEXT): $(test_utf8_OBJECTS) $(test_utf8_DEPENDENCIES) $(EXTRA_test_utf8_DEPENDENCIES) 
-	@rm -f test-utf8$(EXEEXT)
-	$(AM_V_CCLD)$(LINK) $(test_utf8_OBJECTS) $(test_utf8_LDADD) $(LIBS)
-
-test-x509$(EXEEXT): $(test_x509_OBJECTS) $(test_x509_DEPENDENCIES) $(EXTRA_test_x509_DEPENDENCIES) 
-	@rm -f test-x509$(EXEEXT)
-	$(AM_V_CCLD)$(LINK) $(test_x509_OBJECTS) $(test_x509_LDADD) $(LIBS)
-
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
 
 distclean-compile:
 	-rm -f *.tab.c
 
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-cert.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-eku.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-getauxval.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-ku.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/frob-oid.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-array.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-asn1.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-attrs.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-base64.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-buffer.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-compat.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-constants.Po@am__quote@
@@ -719,13 +589,9 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-hash.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-lexer.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-message.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-oid.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-path.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-pem.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-tests.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-url.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-utf8.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/test-x509.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
@@ -1057,6 +923,9 @@ memcheck: all
 
 leakcheck: all
 	make $(AM_MAKEFLAGS) TESTS_ENVIRONMENT="$(LEAKCHECK_ENV)" check-TESTS
+
+hellcheck: all
+	make $(AM_MAKEFLAGS) TESTS_ENVIRONMENT="$(HELLCHECK_ENV)" check-TESTS
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

@@ -116,9 +116,6 @@
 /* Define to 1 if you have the `strnstr' function. */
 #undef HAVE_STRNSTR
 
-/* Define to 1 if `d_type' is a member of `struct dirent'. */
-#undef HAVE_STRUCT_DIRENT_D_TYPE
-
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #undef HAVE_SYS_STAT_H
 
@@ -139,6 +136,9 @@
 
 /* Define to 1 if the system has the type `_Bool'. */
 #undef HAVE__BOOL
+
+/* Whether __libc_enable_secure available */
+#undef HAVE___LIBC_ENABLE_SECURE
 
 /* Whether __progname available */
 #undef HAVE___PROGNAME
@@ -203,6 +203,9 @@
 
 /* Print debug output */
 #undef WITH_DEBUG
+
+/* Use libffi for building closures */
+#undef WITH_FFI
 
 /* Use freebl for hash implementation */
 #undef WITH_FREEBL

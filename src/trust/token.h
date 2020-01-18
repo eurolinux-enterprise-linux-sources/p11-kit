@@ -37,6 +37,7 @@
 
 #include "dict.h"
 #include "index.h"
+#include "parser.h"
 #include "pkcs11.h"
 
 typedef struct _p11_token p11_token;
@@ -49,12 +50,19 @@ void            p11_token_free        (p11_token *token);
 
 int             p11_token_load        (p11_token *token);
 
+bool            p11_token_reload      (p11_token *token,
+                                       CK_ATTRIBUTE *attrs);
+
 p11_index *     p11_token_index       (p11_token *token);
+
+p11_parser *    p11_token_parser      (p11_token *token);
 
 const char *    p11_token_get_path    (p11_token *token);
 
 const char *    p11_token_get_label   (p11_token *token);
 
 CK_SLOT_ID      p11_token_get_slot    (p11_token *token);
+
+bool            p11_token_is_writable (p11_token *token);
 
 #endif /* P11_TOKEN_H_ */

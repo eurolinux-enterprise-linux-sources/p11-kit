@@ -29,7 +29,7 @@
 <p>Global configuration file: <code class="literal">/etc/pkcs11/pkcs11.conf</code></p>
 <pre class="programlisting">
 # This setting controls whether to load user configuration from the
-# /data/.pkcs11 directory. Possible values:
+# /data/.config/pkcs11 directory. Possible values:
 #    none: No user configuration
 #    merge: Merge the user config over the system configuration (default)
 #    only: Only user configuration, ignore system configuration
@@ -47,17 +47,17 @@ module: my-pkcs11-module.so
 # a failure to load or initialize this module will result in a p11-kit system failure.
 critical: no
 </pre>
-<p>User configuration file: <code class="literal">/data/.pkcs11/pkcs11.conf</code></p>
+<p>User configuration file: <code class="literal">/data/.config/pkcs11/pkcs11.conf</code></p>
 <pre class="programlisting">
 # This is an empty file. Files that do not exist are treated as empty.
 </pre>
-<p>User configuration file: <code class="literal">/data/.pkcs11/modules/my-module</code></p>
+<p>User configuration file: <code class="literal">/data/.config/pkcs11/modules/my-module</code></p>
 <pre class="programlisting">
 # Merge with the settings in the system my-module config file. In this case
 # a developer has overridden to load a different module for my-module instead.
 module: /home/user/src/custom-module/my-module.so
 </pre>
-<p>User configuration file: <code class="literal">/data/.pkcs11/modules/nss</code></p>
+<p>User configuration file: <code class="literal">/data/.config/pkcs11/modules/nss</code></p>
 <pre class="programlisting">
 # Load the NSS libsoftokn.so.3 PKCS#11 library as a module. Note that we pass
 # some custom non-standard initialization arguments, as NSS expects.

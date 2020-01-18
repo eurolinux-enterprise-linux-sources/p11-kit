@@ -33,7 +33,7 @@
  */
 
 #include "config.h"
-#include "CuTest.h"
+#include "test.h"
 
 #include "p11-kit.h"
 
@@ -41,30 +41,19 @@
 #include <stdlib.h>
 
 static void
-test_space_strlen (CuTest *tc)
+test_space_strlen (void)
 {
-	CuAssertIntEquals (tc, 4,  p11_kit_space_strlen ((const unsigned char *)"Test                ", 20));
-	CuAssertIntEquals (tc, 20, p11_kit_space_strlen ((const unsigned char *)"01234567890123456789", 20));
-	CuAssertIntEquals (tc, 0,  p11_kit_space_strlen ((const unsigned char *)"                    ", 20));
+	assert_num_eq (4,  p11_kit_space_strlen ((const unsigned char *)"Test                ", 20));
+	assert_num_eq (20, p11_kit_space_strlen ((const unsigned char *)"01234567890123456789", 20));
+	assert_num_eq (0,  p11_kit_space_strlen ((const unsigned char *)"                    ", 20));
 }
 
 int
-main (void)
+main (int argc,
+      char *argv[])
 {
-	CuString *output = CuStringNew ();
-	CuSuite* suite = CuSuiteNew ();
-	int ret;
-
 	putenv ("P11_KIT_STRICT=1");
 
-	SUITE_ADD_TEST (suite, test_space_strlen);
-
-	CuSuiteRun (suite);
-	CuSuiteSummary (suite, output);
-	CuSuiteDetails (suite, output);
-	printf ("%s\n", output->buffer);
-	ret = suite->failCount;
-	CuSuiteDelete (suite);
-	CuStringDelete (output);
-	return ret;
+	p11_test (test_space_strlen, "/util/space-strlen");
+	return p11_test_run (argc, argv);
 }

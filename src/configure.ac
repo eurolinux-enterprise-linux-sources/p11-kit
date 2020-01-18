@@ -1,7 +1,7 @@
 AC_PREREQ(2.61)
 
 AC_INIT([p11-kit],
-	[0.18.7],
+	[0.20.7],
 	[https://bugs.freedesktop.org/enter_bug.cgi?product=p11-glue],
 	[p11-kit],
 	[http://p11-glue.freedesktop.org/p11-kit.html])
@@ -21,7 +21,8 @@ P11KIT_AGE=0
 
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([build/m4])
-AM_INIT_AUTOMAKE([1.10 foreign serial-tests])
+AC_CONFIG_AUX_DIR([build/litter])
+AM_INIT_AUTOMAKE([1.12 foreign serial-tests])
 AM_SANITY_CHECK
 AM_MAINTAINER_MODE([enable])
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])],)
@@ -34,6 +35,7 @@ dnl Checks for programs.
 AC_PROG_CC
 AC_PROG_CPP
 AM_PROG_CC_C_O
+PKG_PROG_PKG_CONFIG
 
 LINGUAS=""
 AM_GNU_GETTEXT([external], [need-ngettext])
@@ -66,15 +68,23 @@ AC_C_BIGENDIAN
 AC_HEADER_STDBOOL
 
 if test "$os_unix" = "yes"; then
-	AC_CHECK_LIB(pthread, pthread_mutex_lock,,
-		[AC_MSG_ERROR([could not find pthread_mutex_lock])])
-	AC_SEARCH_LIBS([dlopen], [dl dld], [],
-		[AC_MSG_ERROR([could not find dlopen])])
-	AC_SEARCH_LIBS([nanosleep], [rt], [],
-		[AC_MSG_ERROR([could not find nanosleep])])
+	AC_CHECK_FUNC([pthread_create], , [
+		AC_CHECK_LIB(pthread, pthread_create, , [
+			AC_MSG_ERROR([could not find pthread_create])
+		])
+	])
+
+	AC_CHECK_FUNC([nanosleep], , [
+		AC_SEARCH_LIBS([nanosleep], [rt], , [
+			AC_MSG_ERROR([could not find nanosleep])
+		])
+	])
+
+	AC_SEARCH_LIBS([dlopen], [dl dld], [], [
+		AC_MSG_ERROR([could not find dlopen])
+	])
 
 	# These are thngs we can work around
-	AC_CHECK_MEMBERS([struct dirent.d_type],,,[#include <dirent.h>])
 	AC_CHECK_FUNCS([getprogname getexecname basename mkstemp mkdtemp])
 	AC_CHECK_FUNCS([getauxval issetugid getresuid])
 	AC_CHECK_FUNCS([strnstr memdup strndup strerror_r])
@@ -89,10 +99,9 @@ if test "$os_unix" = "yes"; then
 		[AC_MSG_ERROR([could not find required gmtime_r() function])])
 
 	# Check if these are declared and/or available to link against
-	AC_CHECK_DECLS([program_invocation_short_name],,,[[#include <errno.h>]])
+	AC_CHECK_DECLS([program_invocation_short_name])
 	AC_MSG_CHECKING([whether program_invocation_short_name is available])
-	AC_LINK_IFELSE([AC_LANG_PROGRAM([[#define _GNU_SOURCE
-	                                  #include <errno.h>]],
+	AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <argp.h>]],
 	                                [[program_invocation_short_name = "test";]])],
 	               [AC_DEFINE([HAVE_PROGRAM_INVOCATION_SHORT_NAME], [1],
 	                          [Whether program_invocation_short_name available])
@@ -101,12 +110,19 @@ if test "$os_unix" = "yes"; then
 	AC_CHECK_DECLS([__progname])
 	AC_LINK_IFELSE([AC_LANG_PROGRAM([[extern char *__progname;]], [[__progname=(char*)0;]])],
 		[AC_DEFINE(HAVE___PROGNAME, [1], [Whether __progname available])])
+	AC_LINK_IFELSE([AC_LANG_PROGRAM([[extern int __libc_enable_secure;]], [[__libc_enable_secure = 0;]])],
+		[AC_DEFINE(HAVE___LIBC_ENABLE_SECURE, [1], [Whether __libc_enable_secure available])])
 fi
 
 AC_CHECK_LIB(intl, dgettext)
 
 # ------------------------------------------------------------------------------
 # PKCS#11 Directories
+
+AC_ARG_WITH([module-config],
+            [AS_HELP_STRING([--with-module-config], [Module configuration files shipped by packages])],
+            [module_config=$withval],
+            [module_config='${pkgdatadir}/modules'])
 
 AC_ARG_WITH([system-config],
             [AS_HELP_STRING([--with-system-config], [Change PKCS#11 system config directory])],
@@ -116,7 +132,7 @@ AC_ARG_WITH([system-config],
 AC_ARG_WITH([user-config],
             [AS_HELP_STRING([--with-system-config], [Change PKCS#11 user config directory])],
             [user_config_dir=$withval],
-            [user_config_dir="~/.pkcs11"])
+            [user_config_dir="~/.config/pkcs11"])
 
 AC_ARG_WITH([module-path],
             [AS_HELP_STRING([--with-module-path], [Load modules with relative path names from here])],
@@ -127,7 +143,7 @@ AC_ARG_WITH([module-path],
 p11_system_config=$system_config_dir
 p11_system_config_file=$p11_system_config/pkcs11.conf
 p11_system_config_modules=$p11_system_config/modules
-p11_package_config_modules='${pkgdatadir}/modules'
+p11_package_config_modules=$module_config
 p11_user_config=$user_config_dir
 p11_user_config_file="$p11_user_config/pkcs11.conf"
 p11_user_config_modules="$p11_user_config/modules"
@@ -161,6 +177,35 @@ AS_IF([test "$with_libtasn1" != "no"], [
 ])
 
 AM_CONDITIONAL(WITH_ASN1, test "$with_libtasn1" = "yes")
+
+# --------------------------------------------------------------------
+# libffi
+
+AC_ARG_WITH([libffi],
+            AS_HELP_STRING([--without-libffi],
+                           [Don't use libffi for building closures]))
+
+if test "$with_libffi" != "no"; then
+	PKG_CHECK_MODULES(LIBFFI, [libffi >= 3.0.0])
+	AC_DEFINE_UNQUOTED(WITH_FFI, 1, [Use libffi for building closures])
+	AC_SUBST(LIBFFI_CFLAGS)
+	AC_SUBST(LIBFFI_LIBS)
+
+	SAVE_CFLAGS="$CFLAGS"
+	CFLAGS="$CFLAGS $LIBFFI_CFLAGS"
+	AC_COMPILE_IFELSE([AC_LANG_PROGRAM([#include <ffi.h>],
+	                  [ #if FFI_CLOSURES
+	                    #else
+	                    #error no closures
+	                    #endif
+	                  ])],
+	[], [AC_MSG_ERROR([the libffi on this system has no support for closures.])])
+	CFLAGS="$SAVE_CFLAGS"
+
+	with_libffi="yes"
+fi
+
+AM_CONDITIONAL(WITH_FFI, test "$with_libffi" = "yes")
 
 # --------------------------------------------------------------------
 # Hash implementation
@@ -355,7 +400,7 @@ if test "$GCC" = "yes"; then
 		-Wmissing-prototypes -Wnested-externs -Wpointer-arith \
 		-Wdeclaration-after-statement -Wformat=2 -Winit-self \
 		-Waggregate-return -Wno-missing-format-attribute \
-		-fno-strict-aliasing"
+		-fno-strict-aliasing -fno-common"
 
 	for option in -Wmissing-include-dirs -Wundef; do
 		SAVE_CFLAGS="$CFLAGS"
@@ -455,8 +500,6 @@ privatedir='${libdir}/p11-kit'
 AC_SUBST(privatedir)
 
 AC_CONFIG_FILES([Makefile
-	build/Makefile
-	build/certs/Makefile
 	common/Makefile
 	common/tests/Makefile
 	doc/Makefile
@@ -466,11 +509,10 @@ AC_CONFIG_FILES([Makefile
 	p11-kit/tests/Makefile
 	p11-kit/p11-kit-1.pc
 	p11-kit/pkcs11.conf.example
-	tools/Makefile
-	tools/tests/Makefile
 	trust/Makefile
-	trust/p11-kit-extract-trust
+	trust/trust-extract-compat
 	trust/tests/Makefile
+	trust/tests/test-extract
 ])
 AC_OUTPUT
 
@@ -492,6 +534,7 @@ AC_MSG_NOTICE([build options:
     Load relative module paths from: $p11_module_path
 
     With libtasn1 dependency:        $with_libtasn1
+    With libffi:                     $with_libffi
     With hash implementation:        $with_hash_impl
 
     Build trust module:              $enable_trust_module

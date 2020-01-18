@@ -37,26 +37,6 @@
 
 #include "compat.h"
 
-/*
- * The SHA-1 and MD5 digests here are used for checksums in legacy
- * protocols. We don't use them in cryptographic contexts at all.
- * These particular algorithms would be poor choices for that.
- */
-
-#define P11_HASH_MD5_LEN 16
-
-void     p11_hash_md5       (unsigned char *hash,
-                             const void *input,
-                             size_t length,
-                             ...) GNUC_NULL_TERMINATED;
-
-#define P11_HASH_SHA1_LEN 20
-
-void     p11_hash_sha1      (unsigned char *hash,
-                             const void *input,
-                             size_t length,
-                             ...) GNUC_NULL_TERMINATED;
-
 #define P11_HASH_MURMUR3_LEN 4
 
 void     p11_hash_murmur3   (void *hash,

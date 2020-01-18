@@ -122,30 +122,23 @@ typedef CK_ULONG                        CK_TRUST;
 #define CKO_X_VENDOR   (CKA_VENDOR_DEFINED | 0x58444700UL)
 
 /* -------------------------------------------------------------------
- * TRUST ASSERTIONS
- *
- * These are retired and should not be used in new code
+ * BLACKLISTS
  */
 
-#define CKO_X_TRUST_ASSERTION                    (CKO_X_VENDOR + 100)
-#define CKA_X_ASSERTION_TYPE                     (CKA_X_VENDOR + 1)
-#define CKA_X_CERTIFICATE_VALUE                  (CKA_X_VENDOR + 2)
-#define CKA_X_PURPOSE                            (CKA_X_VENDOR + 3)
-#define CKA_X_PEER                               (CKA_X_VENDOR + 4)
-typedef CK_ULONG CK_X_ASSERTION_TYPE;
-#define CKT_X_DISTRUSTED_CERTIFICATE             1UL
-#define CKT_X_PINNED_CERTIFICATE                 2UL
-#define CKT_X_ANCHORED_CERTIFICATE               3UL
+#define CKA_X_DISTRUSTED                             (CKA_X_VENDOR + 100)
 
 /* -------------------------------------------------------------------
- * STAPLED CERTIFICATES
+ * CERTIFICATE EXTENSIONS
  *
- * Not yet final
+ * For attaching certificate extensions to certificates
  */
 
 #define CKO_X_CERTIFICATE_EXTENSION                  (CKO_X_VENDOR + 200)
-#define CKA_X_DISTRUSTED                             (CKA_X_VENDOR + 100)
-#define CKA_X_CRITICAL                               (CKA_X_VENDOR + 101)
+
+/* From the 2.40 draft */
+#ifndef CKA_PUBLIC_KEY_INFO
+#define CKA_PUBLIC_KEY_INFO                          0x00000129UL
+#endif
 
 #endif /* CRYPTOKI_X_VENDOR_DEFINED */
 

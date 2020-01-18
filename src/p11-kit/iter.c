@@ -52,8 +52,6 @@ typedef struct _Callback {
 	struct _Callback *next;
 } Callback;
 
-#define MAX_OBJECTS 64
-
 /**
  * P11KitIter:
  *
@@ -66,7 +64,6 @@ struct p11_kit_iter {
 	CK_TOKEN_INFO match_token;
 	CK_ATTRIBUTE *match_attrs;
 	Callback *callbacks;
-	CK_FLAGS session_flags;
 
 	/* The input modules */
 	p11_array *modules;
@@ -77,7 +74,8 @@ struct p11_kit_iter {
 	CK_ULONG saw_slots;
 
 	/* The results of C_FindObjects */
-	CK_OBJECT_HANDLE objects[MAX_OBJECTS];
+	CK_OBJECT_HANDLE *objects;
+	CK_ULONG max_objects;
 	CK_ULONG num_objects;
 	CK_ULONG saw_objects;
 
@@ -86,6 +84,7 @@ struct p11_kit_iter {
 	CK_SLOT_ID slot;
 	CK_SESSION_HANDLE session;
 	CK_OBJECT_HANDLE object;
+	CK_TOKEN_INFO token_info;
 
 	/* And various flags */
 	unsigned int searching : 1;
@@ -93,11 +92,24 @@ struct p11_kit_iter {
 	unsigned int iterating : 1;
 	unsigned int match_nothing : 1;
 	unsigned int keep_session : 1;
+	unsigned int preload_results : 1;
+	unsigned int want_writable : 1;
 };
+
+/**
+ * P11KitIterBehavior:
+ * @P11_KIT_ITER_BUSY_SESSIONS: Allow the iterator's sessions to be
+ *   in a busy state when the iterator returns an object.
+ * @P11_KIT_ITER_WANT_WRITABLE: Try to open read-write sessions when
+ *   iterating over obojects.
+ *
+ * Various flags controling the behavior of the iterator.
+ */
 
 /**
  * p11_kit_iter_new:
  * @uri: (allow-none): a PKCS\#11 URI to filter on, or %NULL
+ * @behavior: various behavior flags for iterator
  *
  * Create a new PKCS\#11 iterator for iterating over objects. Only
  * objects that match the @uri will be returned by the iterator.
@@ -111,19 +123,51 @@ struct p11_kit_iter {
  *          with p11_kit_iter_free()
  */
 P11KitIter *
-p11_kit_iter_new (P11KitUri *uri)
+p11_kit_iter_new (P11KitUri *uri,
+                  P11KitIterBehavior behavior)
 {
 	P11KitIter *iter;
-	CK_ATTRIBUTE *attrs;
-	CK_TOKEN_INFO *tinfo;
-	CK_INFO *minfo;
-	CK_ULONG count;
 
 	iter = calloc (1, sizeof (P11KitIter));
 	return_val_if_fail (iter != NULL, NULL);
 
 	iter->modules = p11_array_new (NULL);
 	return_val_if_fail (iter->modules != NULL, NULL);
+
+	iter->want_writable = !!(behavior & P11_KIT_ITER_WANT_WRITABLE);
+	iter->preload_results = !(behavior & P11_KIT_ITER_BUSY_SESSIONS);
+
+	p11_kit_iter_set_uri (iter, uri);
+	return iter;
+}
+
+/**
+ * p11_kit_iter_set_uri:
+ * @iter: the iterator
+ * @uri: (allow-none): a PKCS\#11 URI to filter on, or %NULL
+ *
+ * Set the PKCS\#11 uri for iterator. Only
+ * objects that match the @uri will be returned by the iterator.
+ * Relevant information in @uri is copied, and you need not keep
+ * @uri around.
+ *
+ * If no @uri is specified then the iterator will iterate over all
+ * objects, unless otherwise filtered.
+ *
+ * This function should be called at most once, and should be
+ * called before iterating begins.
+ *
+ */
+void
+p11_kit_iter_set_uri (P11KitIter *iter,
+                      P11KitUri *uri)
+{
+	CK_ATTRIBUTE *attrs;
+	CK_TOKEN_INFO *tinfo;
+	CK_INFO *minfo;
+	CK_ULONG count;
+
+	return_if_fail (iter != NULL);
 
 	if (uri != NULL) {
 
@@ -144,30 +188,10 @@ p11_kit_iter_new (P11KitUri *uri)
 		}
 	} else {
 		/* Match any module version number*/
+		memset (&iter->match_module, 0, sizeof (iter->match_module));
 		iter->match_module.libraryVersion.major = (CK_BYTE)-1;
 		iter->match_module.libraryVersion.minor = (CK_BYTE)-1;
 	}
-
-	iter->session_flags = CKF_SERIAL_SESSION;
-
-	return iter;
-}
-
-/**
- * p11_kit_iter_set_session_flags:
- * @iter: the iterator
- * @flags: set of session flags
- *
- * Set the PKCS\#11 session flags to be used when the iterator opens
- * new sessions.
- */
-void
-p11_kit_iter_set_session_flags (P11KitIter *iter,
-                                CK_FLAGS flags)
-{
-	return_if_fail (iter != NULL);
-	return_if_fail (!iter->iterating);
-	iter->session_flags = flags | CKF_SERIAL_SESSION;
 }
 
 /**
@@ -209,6 +233,10 @@ p11_kit_iter_set_session_flags (P11KitIter *iter,
  * indicates through it's <literal>matches</literal> argument that
  * the object should not match, then that object will not be iterated
  * as far as p11_kit_iter_next() is concerned.
+ *
+ * The callbacks will be called with the <literal>matches</literal>
+ * set to <literal>CK_TRUE</literal> and it's up to filters to change
+ * it to <literal>CK_FALSE</literal> when necessary.
  */
 void
 p11_kit_iter_add_callback (P11KitIter *iter,
@@ -434,7 +462,7 @@ call_all_filters (P11KitIter *iter,
 static CK_RV
 move_next_session (P11KitIter *iter)
 {
-	CK_TOKEN_INFO tinfo;
+	CK_ULONG session_flags;
 	CK_ULONG num_slots;
 	CK_INFO minfo;
 	CK_RV rv;
@@ -478,11 +506,17 @@ move_next_session (P11KitIter *iter)
 		iter->slot = iter->slots[iter->saw_slots++];
 
 		assert (iter->module != NULL);
-		rv = (iter->module->C_GetTokenInfo) (iter->slot, &tinfo);
-		if (rv != CKR_OK || !p11_match_uri_token_info (&iter->match_token, &tinfo))
+		rv = (iter->module->C_GetTokenInfo) (iter->slot, &iter->token_info);
+		if (rv != CKR_OK || !p11_match_uri_token_info (&iter->match_token, &iter->token_info))
 			continue;
 
-		rv = (iter->module->C_OpenSession) (iter->slot, iter->session_flags,
+		session_flags = CKF_SERIAL_SESSION;
+
+		/* Skip if the read/write on a read-only token */
+		if (iter->want_writable && (iter->token_info.flags & CKF_WRITE_PROTECTED) == 0)
+			session_flags |= CKF_RW_SESSION;
+
+		rv = (iter->module->C_OpenSession) (iter->slot, session_flags,
 		                                    NULL, NULL, &iter->session);
 		if (rv != CKR_OK)
 			return finish_iterating (iter, rv);
@@ -515,6 +549,7 @@ move_next_session (P11KitIter *iter)
 CK_RV
 p11_kit_iter_next (P11KitIter *iter)
 {
+	CK_ULONG batch;
 	CK_ULONG count;
 	CK_BBOOL matches;
 	CK_RV rv;
@@ -566,20 +601,36 @@ p11_kit_iter_next (P11KitIter *iter)
 		iter->num_objects = 0;
 		iter->saw_objects = 0;
 
-		rv = (iter->module->C_FindObjects) (iter->session, iter->objects,
-		                                    MAX_OBJECTS, &iter->num_objects);
-		if (rv != CKR_OK)
-			return finish_iterating (iter, rv);
+		for (;;) {
+			if (iter->max_objects - iter->num_objects == 0) {
+				iter->max_objects = iter->max_objects ? iter->max_objects * 2 : 64;
+				iter->objects = realloc (iter->objects, iter->max_objects * sizeof (CK_ULONG));
+				return_val_if_fail (iter->objects != NULL, CKR_HOST_MEMORY);
+			}
 
-		/*
-		 * Done searching on this session, although there are still
-		 * objects outstanding, which will be returned on next
-		 * iterations.
-		 */
-		if (iter->num_objects != MAX_OBJECTS) {
-			iter->searching = 0;
-			iter->searched = 1;
-			(iter->module->C_FindObjectsFinal) (iter->session);
+			batch = iter->max_objects - iter->num_objects;
+			rv = (iter->module->C_FindObjects) (iter->session,
+			                                    iter->objects + iter->num_objects,
+			                                    batch, &count);
+			if (rv != CKR_OK)
+				return finish_iterating (iter, rv);
+
+			iter->num_objects += count;
+
+			/*
+			 * Done searching on this session, although there are still
+			 * objects outstanding, which will be returned on next
+			 * iterations.
+			 */
+			if (batch != count) {
+				iter->searching = 0;
+				iter->searched = 1;
+				(iter->module->C_FindObjectsFinal) (iter->session);
+				break;
+			}
+
+			if (!iter->preload_results)
+				break;
 		}
 	}
 
@@ -624,6 +675,23 @@ p11_kit_iter_get_slot (P11KitIter *iter)
 }
 
 /**
+ * p11_kit_iter_get_token:
+ * @iter: the iterator
+ *
+ * Get the token info for the token which the current matching object is on.
+ *
+ * This can only be called after p11_kit_iter_next(0 succeeds.
+ *
+ * Returns: the slot of the current matching object.
+ */
+CK_TOKEN_INFO *
+p11_kit_iter_get_token (P11KitIter *iter)
+{
+	return_val_if_fail (iter != NULL, NULL);
+	return &iter->token_info;
+}
+
+/**
  * p11_kit_iter_get_session:
  * @iter: the iterator
  *
@@ -635,7 +703,7 @@ p11_kit_iter_get_slot (P11KitIter *iter)
  * The session may be closed after the next p11_kit_iter_next() call
  * unless p11_kit_iter_keep_session() is called.
  *
- * Returns: the slot of the current matching object
+ * Returns: the session used to find the current matching object
  */
 CK_SESSION_HANDLE
 p11_kit_iter_get_session (P11KitIter *iter)
@@ -660,6 +728,59 @@ p11_kit_iter_get_object (P11KitIter *iter)
 {
 	return_val_if_fail (iter != NULL, 0);
 	return iter->object;
+}
+
+/**
+ * p11_kit_iter_destroy_object:
+ * @iter: teh iterator
+ *
+ * Destory the current matching object.
+ *
+ * This can only be called after p11_kit_iter_next() succeeds.
+ *
+ * Returns: CKR_OK or a failure code
+ */
+CK_RV
+p11_kit_iter_destroy_object (P11KitIter *iter)
+{
+	return_val_if_fail (iter != NULL, CKR_GENERAL_ERROR);
+	return_val_if_fail (iter->iterating, CKR_GENERAL_ERROR);
+	return (iter->module->C_DestroyObject) (iter->session, iter->object);
+}
+
+/**
+ * p11_kit_iter_get_attributes:
+ * @iter: the iterator
+ * @template: (array length=count) (inout): the attributes to get
+ * @count: the number of attributes
+ *
+ * Get attributes for the current matching object.
+ *
+ * This calls <literal>C_GetAttributeValue</literal> for the object
+ * currently iterated to. Return value and attribute memory behavior
+ * is identical to the PKCS\#11 <literal>C_GetAttributeValue</literal>
+ * function.
+ *
+ * You might choose to use p11_kit_iter_load_attributes() for a more
+ * helpful variant.
+ *
+ * This can only be called after p11_kit_iter_next() succeeds.
+ *
+ * Returns: The result from <literal>C_GetAttributeValue</literal>.
+ */
+CK_RV
+p11_kit_iter_get_attributes (P11KitIter *iter,
+                             CK_ATTRIBUTE *template,
+                             CK_ULONG count)
+{
+	return_val_if_fail (iter != NULL, CKR_GENERAL_ERROR);
+	return_val_if_fail (iter->iterating, CKR_GENERAL_ERROR);
+	return_val_if_fail (iter->module != NULL, CKR_GENERAL_ERROR);
+	return_val_if_fail (iter->session != 0, CKR_GENERAL_ERROR);
+	return_val_if_fail (iter->object != 0, CKR_GENERAL_ERROR);
+
+	return (iter->module->C_GetAttributeValue) (iter->session, iter->object,
+	                                            template, count);
 }
 
 /**
@@ -739,7 +860,7 @@ p11_kit_iter_load_attributes (P11KitIter *iter,
 
 		} else {
 			template[i].pValue = realloc (original[i].pValue, template[i].ulValueLen);
-			return_val_if_fail (template[i].pValue != NULL, 0);
+			return_val_if_fail (template[i].pValue != NULL, CKR_HOST_MEMORY);
 		}
 	}
 
@@ -815,6 +936,7 @@ p11_kit_iter_free (P11KitIter *iter)
 	finish_iterating (iter, CKR_OK);
 	p11_array_free (iter->modules);
 	p11_attrs_free (iter->match_attrs);
+	free (iter->objects);
 	free (iter->slots);
 
 	for (cb = iter->callbacks; cb != NULL; cb = next) {

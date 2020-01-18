@@ -7,7 +7,7 @@
 <link rel="home" href="index.html" title="p11-kit">
 <link rel="up" href="tools.html" title="Manual Pages">
 <link rel="prev" href="p11-kit.html" title="p11-kit">
-<link rel="next" href="reference.html" title="API Reference">
+<link rel="next" href="trust.html" title="trust">
 <meta name="generator" content="GTK-Doc V1.19 (XML mode)">
 <link rel="stylesheet" href="style.css" type="text/css">
 </head>
@@ -17,7 +17,7 @@
 <td><a accesskey="u" href="tools.html"><img src="up.png" width="24" height="24" border="0" alt="Up"></a></td>
 <td><a accesskey="h" href="index.html"><img src="home.png" width="24" height="24" border="0" alt="Home"></a></td>
 <th width="100%" align="center">p11-kit</th>
-<td><a accesskey="n" href="reference.html"><img src="right.png" width="24" height="24" border="0" alt="Next"></a></td>
+<td><a accesskey="n" href="trust.html"><img src="right.png" width="24" height="24" border="0" alt="Next"></a></td>
 </tr></table>
 <div class="refentry">
 <a name="pkcs11-conf"></a><div class="titlepage"></div>
@@ -123,6 +123,21 @@ x-custom : text
 </td>
 </tr>
 <tr>
+<td><p><a name="option-isolated"></a><span class="term"><code class="option">isolated:</code></span></p></td>
+<td><p>Set to <code class="literal">yes</code> to run this PKCS#11 module in its own
+			process. This is a simple way to set the <code class="option">remote</code> to
+			accomplish the same thing.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="option">managed:</code></span></p></td>
+<td>
+<p>Set to <code class="literal">no</code> if the module is not to be managed by
+			p11-kit. Making a module unmanaged is not recommended, and will cause
+			problems if multiple callers in a single process share a PKCS#11 module.</p>
+<p>This argument is optonal and defaults to <code class="literal">yes</code>.</p>
+</td>
+</tr>
+<tr>
 <td><p><span class="term"><code class="option">priority:</code></span></p></td>
 <td>
 <p>The value should be an integer. When lists of modules are
@@ -136,9 +151,30 @@ x-custom : text
 </td>
 </tr>
 <tr>
+<td><p><span class="term"><code class="option">remote:</code></span></p></td>
+<td>
+<p>Instead of loading the PKCS#11 module locally, run the module
+			remotely.</p>
+<p>Specify a command to run, prefixed with <code class="literal">|</code> a pipe.
+			The command must speak the p11-kit remoting protocol on its standard in
+			and standard out. For example:</p>
+<pre class="programlisting">
+remote: |ssh user@remote p11-kit remote /path/to/module.so
+</pre>
+</td>
+</tr>
+<tr>
 <td><p><span class="term"><code class="option">trust-policy:</code></span></p></td>
 <td><p>Set to <code class="literal">yes</code> to use use this module as a source
 			of trust policy information such as certificate anchors and black lists.</p></td>
+</tr>
+<tr>
+<td><p><a name="option-log-calls"></a><span class="term">log-calls:</span></p></td>
+<td>
+<p>Set to <code class="literal">yes</code> to write a log to stderr of all the
+			calls into the module. This is only supported for managed modules.</p>
+<p>This argument is optonal and defaults to <code class="literal">no</code>.</p>
+</td>
 </tr>
 </tbody>
 </table></div>
@@ -159,12 +195,36 @@ x-custom : text
 <col align="left" valign="top">
 <col>
 </colgroup>
-<tbody><tr>
+<tbody>
+<tr>
 <td><p><span class="term"><code class="option">user-config:</code></span></p></td>
 <td><p>This will be equal to one of the following values:
 		<code class="literal">none</code>, <code class="literal">merge</code>,
 		<code class="literal">only</code>.</p></td>
-</tr></tbody>
+</tr>
+<tr>
+<td><p><span class="term"><code class="option">managed:</code></span></p></td>
+<td>
+<p>Set to <code class="literal">yes</code> or <code class="literal">no</code> to
+			force all modules to be managed or unmanaged by p11-kit. Setting this
+			setting in a global configuration file will override the
+			<code class="literal">managed</code> setting in the individual module configuration
+			files. Making modules unmanaged is not recommended, and will cause
+			problems if multiple callers in a single process share a PKCS#11
+			module.</p>
+<p>This argument is optonal.</p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term">log-calls:</span></p></td>
+<td>
+<p>Set to <code class="literal">yes</code> to write a log to stderr of all the
+			calls into all configured modules. This is only supported for managed
+			modules.</p>
+<p>This argument is optional.</p>
+</td>
+</tr>
+</tbody>
 </table></div>
 <p>Other fields may be present, but it is recommended that field names
 	that are not specified in this document start with a <code class="literal">x-</code>
@@ -179,11 +239,11 @@ x-custom : text
 	additional configuration or override the system configuration.</p>
 <p>The system global configuration file is usually in
 	<code class="literal">/etc/pkcs11/pkcs11.conf</code> and the user global
-	configuration file is in <code class="literal">/data/.pkcs11/pkcs11.conf</code> in the
+	configuration file is in <code class="literal">/data/.config/pkcs11/pkcs11.conf</code> in the
 	user's home directory.</p>
 <p>The module config files are usually located in the
 	<code class="literal">/etc/pkcs11/modules</code> directory, with one configuration
-	file per module. In addition the <code class="literal">/data/.pkcs11/modules</code> directory
+	file per module. In addition the <code class="literal">/data/.config/pkcs11/modules</code> directory
 	can be used for modules installed by the user.</p>
 <p>Note that user configuration files are not loaded from the home
 	directory if running inside a setuid or setgid program.</p>

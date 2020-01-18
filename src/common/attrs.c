@@ -42,6 +42,7 @@
 #include "debug.h"
 #include "hash.h"
 #include "pkcs11.h"
+#include "pkcs11i.h"
 #include "pkcs11x.h"
 
 #include <assert.h>
@@ -508,15 +509,22 @@ unsigned int
 p11_attr_hash (const void *data)
 {
 	const CK_ATTRIBUTE *attr = data;
-	uint32_t hash;
+	uint32_t hash = 0;
 
-	p11_hash_murmur3 (&hash,
-	                  &attr->type, sizeof (attr->type),
-	                  attr->pValue, (size_t)attr->ulValueLen,
-	                  NULL);
+	if (attr != NULL) {
+		p11_hash_murmur3 (&hash,
+		                  &attr->type, sizeof (attr->type),
+		                  attr->pValue, (size_t)attr->ulValueLen,
+		                  NULL);
+	}
 
 	return hash;
 }
+
+static void
+buffer_append_printf (p11_buffer *buffer,
+                      const char *format,
+                      ...) GNUC_PRINTF(2, 3);
 
 static void
 buffer_append_printf (p11_buffer *buffer,
@@ -662,6 +670,7 @@ attribute_is_sensitive (const CK_ATTRIBUTE *attr,
 	X (CKA_X_PEER)
 	X (CKA_X_DISTRUSTED)
 	X (CKA_X_CRITICAL)
+	X (CKA_PUBLIC_KEY_INFO)
 	X (CKA_NSS_URL)
 	X (CKA_NSS_EMAIL)
 	X (CKA_NSS_SMIME_INFO)
@@ -813,10 +822,10 @@ format_some_bytes (p11_buffer *buffer,
 	p11_buffer_add (buffer, "\"", 1);
 }
 
-static void
-format_attribute (p11_buffer *buffer,
-                  const CK_ATTRIBUTE *attr,
-                  CK_OBJECT_CLASS klass)
+void
+p11_attr_format (p11_buffer *buffer,
+                 const CK_ATTRIBUTE *attr,
+                 CK_OBJECT_CLASS klass)
 {
 	p11_buffer_add (buffer, "{ ", -1);
 	format_attribute_type (buffer, attr->type);
@@ -844,10 +853,10 @@ format_attribute (p11_buffer *buffer,
 	p11_buffer_add (buffer, " }", -1);
 }
 
-static void
-format_attributes (p11_buffer *buffer,
-                   const CK_ATTRIBUTE *attrs,
-                   int count)
+void
+p11_attrs_format (p11_buffer *buffer,
+                  const CK_ATTRIBUTE *attrs,
+                  int count)
 {
 	CK_BBOOL first = CK_TRUE;
 	CK_OBJECT_CLASS klass;
@@ -866,7 +875,7 @@ format_attributes (p11_buffer *buffer,
 		else
 			p11_buffer_add (buffer, ", ", 2);
 		first = CK_FALSE;
-		format_attribute (buffer, attrs + i, klass);
+		p11_attr_format (buffer, attrs + i, klass);
 	}
 	p11_buffer_add (buffer, " ]", -1);
 }
@@ -878,7 +887,7 @@ p11_attrs_to_string (const CK_ATTRIBUTE *attrs,
 	p11_buffer buffer;
 	if (!p11_buffer_init_null (&buffer, 128))
 		return_val_if_reached (NULL);
-	format_attributes (&buffer, attrs, count);
+	p11_attrs_format (&buffer, attrs, count);
 	return p11_buffer_steal (&buffer, NULL);
 }
 
@@ -889,6 +898,6 @@ p11_attr_to_string (const CK_ATTRIBUTE *attr,
 	p11_buffer buffer;
 	if (!p11_buffer_init_null (&buffer, 32))
 		return_val_if_reached (NULL);
-	format_attribute (&buffer, attr, klass);
+	p11_attr_format (&buffer, attr, klass);
 	return p11_buffer_steal (&buffer, NULL);
 }

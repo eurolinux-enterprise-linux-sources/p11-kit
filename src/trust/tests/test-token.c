@@ -33,7 +33,8 @@
  */
 
 #include "config.h"
-#include "CuTest.h"
+#include "test.h"
+#include "test-trust.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -41,55 +42,76 @@
 
 #include "attrs.h"
 #include "debug.h"
+#include "parser.h"
+#include "path.h"
 #include "pkcs11x.h"
 #include "message.h"
-#include "test-data.h"
 #include "token.h"
+
+static CK_OBJECT_CLASS certificate = CKO_CERTIFICATE;
+static CK_OBJECT_CLASS data = CKO_DATA;
+static CK_BBOOL falsev = CK_FALSE;
+static CK_BBOOL truev = CK_TRUE;
 
 struct {
 	p11_token *token;
+	p11_index *index;
+	p11_parser *parser;
+	char *directory;
 } test;
 
 static void
-setup (CuTest *cu,
-       const char *path)
+setup (void *path)
 {
 	test.token = p11_token_new (333, path, "Label");
-	CuAssertPtrNotNull (cu, test.token);
+	assert_ptr_not_null (test.token);
+
+	test.index = p11_token_index (test.token);
+	assert_ptr_not_null (test.token);
+
+	test.parser = p11_token_parser (test.token);
+	assert_ptr_not_null (test.parser);
 }
 
 static void
-teardown (CuTest *cu)
+setup_temp (void *unused)
+{
+	test.directory = p11_test_directory ("test-module");
+	setup (test.directory);
+}
+
+static void
+teardown (void *path)
 {
 	p11_token_free (test.token);
 	memset (&test, 0, sizeof (test));
 }
 
 static void
-test_token_load (CuTest *cu)
+teardown_temp (void *unused)
+{
+	test_delete_directory (test.directory);
+	teardown (test.directory);
+	free (test.directory);
+}
+
+static void
+test_token_load (void *path)
 {
 	p11_index *index;
 	int count;
 
-	setup (cu, SRCDIR "/input");
-
 	count = p11_token_load (test.token);
-	CuAssertIntEquals (cu, 7, count);
+	assert_num_eq (6, count);
 
-	/* A certificate and trust object for each parsed object + builtin */
+	/* A certificate and trust object for each parsed object */
 	index = p11_token_index (test.token);
-	CuAssertTrue (cu, ((count - 1) * 2) + 1 <= p11_index_size (index));
-
-	teardown (cu);
+	assert (((count - 1) * 2) + 1 <= p11_index_size (index));
 }
 
 static void
-test_token_flags (CuTest *cu)
+test_token_flags (void *path)
 {
-	CK_OBJECT_CLASS certificate = CKO_CERTIFICATE;
-	CK_BBOOL falsev = CK_FALSE;
-	CK_BBOOL truev = CK_TRUE;
-
 	/*
 	 * blacklist comes from the input/distrust.pem file. It is not in the blacklist
 	 * directory, but is an OpenSSL trusted certificate file, and is marked
@@ -178,78 +200,594 @@ test_token_flags (CuTest *cu)
 	CK_ATTRIBUTE *object;
 	int i;
 
-	setup (cu, SRCDIR "/input");
-
 	if (p11_token_load (test.token) < 0)
-		CuFail (cu, "should not be reached");
+		assert_not_reached ();
 
 	/* The other objects */
 	for (i = 0; expected[i]; i++) {
 		handle = p11_index_find (p11_token_index (test.token), expected[i], 2);
-		CuAssertTrue (cu, handle != 0);
+		assert (handle != 0);
 
 		object = p11_index_lookup (p11_token_index (test.token), handle);
-		CuAssertPtrNotNull (cu, object);
+		assert_ptr_not_null (object);
 
-		test_check_attrs (cu, expected[i], object);
+		test_check_attrs (expected[i], object);
 	}
-
-	teardown (cu);
 }
 
 static void
-test_token_path (CuTest *cu)
+test_token_path (void *path)
 {
-	setup (cu, "/wheee");
-
-	CuAssertStrEquals (cu, "/wheee", p11_token_get_path (test.token));
-
-	teardown (cu);
+	assert_str_eq (path, p11_token_get_path (test.token));
 }
 
 static void
-test_token_label (CuTest *cu)
+test_token_label (void *path)
 {
-	setup (cu, "/wheee");
-
-	CuAssertStrEquals (cu, "Label", p11_token_get_label (test.token));
-
-	teardown (cu);
+	assert_str_eq ("Label", p11_token_get_label (test.token));
 }
 
 static void
-test_token_slot (CuTest *cu)
+test_token_slot (void *path)
 {
-	setup (cu, "/unneeded");
+	assert_num_eq (333, p11_token_get_slot (test.token));
+}
 
-	CuAssertIntEquals (cu, 333, p11_token_get_slot (test.token));
+static void
+test_not_writable (void)
+{
+	p11_token *token;
 
-	teardown (cu);
+#ifdef OS_UNIX
+	if (getuid () != 0) {
+#endif
+		token = p11_token_new (333, "/", "Label");
+		assert (!p11_token_is_writable (token));
+		p11_token_free (token);
+#ifdef OS_UNIX
+	}
+#endif
+
+	token = p11_token_new (333, "", "Label");
+	assert (!p11_token_is_writable (token));
+	p11_token_free (token);
+
+	token = p11_token_new (333, "/non-existant", "Label");
+	assert (!p11_token_is_writable (token));
+	p11_token_free (token);
+}
+
+static void
+test_writable_exists (void)
+{
+	/* A writable directory since we created it */
+	assert (p11_token_is_writable (test.token));
+}
+
+static void
+test_writable_no_exist (void)
+{
+	char *directory;
+	p11_token *token;
+	char *path;
+
+	directory = p11_test_directory ("test-module");
+
+	path = p11_path_build (directory, "subdir", NULL);
+	assert (path != NULL);
+
+	token = p11_token_new (333, path, "Label");
+	free (path);
+
+	/* A writable directory since parent is writable */
+	assert (p11_token_is_writable (token));
+
+	p11_token_free (token);
+
+	if (rmdir (directory) < 0)
+		assert_not_reached ();
+
+	free (directory);
+}
+
+static void
+test_load_already (void)
+{
+	CK_ATTRIBUTE cert[] = {
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_SUBJECT, (void *)test_cacert3_ca_subject, sizeof (test_cacert3_ca_subject) },
+		{ CKA_VALUE, (void *)test_cacert3_ca_der, sizeof (test_cacert3_ca_der) },
+		{ CKA_INVALID },
+	};
+
+	CK_OBJECT_HANDLE handle;
+	int ret;
+
+	test_write_file (test.directory, "test.cer", test_cacert3_ca_der,
+	                 sizeof (test_cacert3_ca_der));
+
+	ret = p11_token_load (test.token);
+	assert_num_eq (ret, 1);
+	handle = p11_index_find (test.index, cert, -1);
+	assert (handle != 0);
+
+	/* Have to wait to make sure changes are detected */
+	p11_sleep_ms (1100);
+
+	ret = p11_token_load (test.token);
+	assert_num_eq (ret, 0);
+	assert_num_eq (p11_index_find (test.index, cert, -1), handle);
+}
+
+static void
+test_load_unreadable (void)
+{
+	CK_ATTRIBUTE cert[] = {
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_SUBJECT, (void *)test_cacert3_ca_subject, sizeof (test_cacert3_ca_subject) },
+		{ CKA_VALUE, (void *)test_cacert3_ca_der, sizeof (test_cacert3_ca_der) },
+		{ CKA_INVALID },
+	};
+
+	int ret;
+
+	test_write_file (test.directory, "test.cer", test_cacert3_ca_der,
+	                 sizeof (test_cacert3_ca_der));
+
+	ret = p11_token_load (test.token);
+	assert_num_eq (ret, 1);
+	assert (p11_index_find (test.index, cert, -1) != 0);
+
+	test_write_file (test.directory, "test.cer", "", 0);
+
+	/* Have to wait to make sure changes are detected */
+	p11_sleep_ms (1100);
+
+	ret = p11_token_load (test.token);
+	assert_num_eq (ret, 0);
+	assert (p11_index_find (test.index, cert, -1) == 0);
+}
+
+static void
+test_load_gone (void)
+{
+	CK_ATTRIBUTE cert[] = {
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_SUBJECT, (void *)test_cacert3_ca_subject, sizeof (test_cacert3_ca_subject) },
+		{ CKA_VALUE, (void *)test_cacert3_ca_der, sizeof (test_cacert3_ca_der) },
+		{ CKA_INVALID },
+	};
+
+	int ret;
+
+	test_write_file (test.directory, "test.cer", test_cacert3_ca_der,
+	                 sizeof (test_cacert3_ca_der));
+
+	ret = p11_token_load (test.token);
+	assert_num_eq (ret, 1);
+	assert (p11_index_find (test.index, cert, -1) != 0);
+
+	test_delete_file (test.directory, "test.cer");
+
+	/* Have to wait to make sure changes are detected */
+	p11_sleep_ms (1100);
+
+	ret = p11_token_load (test.token);
+	assert_num_eq (ret, 0);
+	assert (p11_index_find (test.index, cert, -1) == 0);
+}
+
+static void
+test_load_found (void)
+{
+	CK_ATTRIBUTE cert[] = {
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_SUBJECT, (void *)test_cacert3_ca_subject, sizeof (test_cacert3_ca_subject) },
+		{ CKA_VALUE, (void *)test_cacert3_ca_der, sizeof (test_cacert3_ca_der) },
+		{ CKA_INVALID },
+	};
+
+	int ret;
+
+	ret = p11_token_load (test.token);
+	assert_num_eq (ret, 0);
+	assert (p11_index_find (test.index, cert, -1) == 0);
+
+	/* Have to wait to make sure changes are detected */
+	p11_sleep_ms (1100);
+
+	test_write_file (test.directory, "test.cer", test_cacert3_ca_der,
+	                 sizeof (test_cacert3_ca_der));
+
+	ret = p11_token_load (test.token);
+	assert_num_eq (ret, 1);
+	assert (p11_index_find (test.index, cert, -1) != 0);
+}
+
+static void
+test_reload_changed (void)
+{
+	CK_ATTRIBUTE cacert3[] = {
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_SUBJECT, (void *)test_cacert3_ca_subject, sizeof (test_cacert3_ca_subject) },
+		{ CKA_VALUE, (void *)test_cacert3_ca_der, sizeof (test_cacert3_ca_der) },
+		{ CKA_INVALID },
+	};
+
+	CK_ATTRIBUTE verisign[] = {
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_VALUE, (void *)verisign_v1_ca, sizeof (verisign_v1_ca) },
+		{ CKA_INVALID },
+	};
+
+	CK_ATTRIBUTE *attrs;
+	CK_OBJECT_HANDLE handle;
+	int ret;
+
+	/* Just one file */
+	test_write_file (test.directory, "test.cer", test_cacert3_ca_der,
+	                 sizeof (test_cacert3_ca_der));
+
+	ret = p11_token_load (test.token);
+	assert_num_eq (ret, 1);
+	handle = p11_index_find (test.index, cacert3, -1);
+	assert (handle != 0);
+
+	/* Replace the file with verisign */
+	test_write_file (test.directory, "test.cer", verisign_v1_ca,
+	                 sizeof (verisign_v1_ca));
+
+	/* Add another file with cacert3, but not reloaded */
+	test_write_file (test.directory, "another.cer", test_cacert3_ca_der,
+	                 sizeof (test_cacert3_ca_der));
+
+	attrs = p11_index_lookup (test.index, handle);
+	assert_ptr_not_null (attrs);
+	if (!p11_token_reload (test.token, attrs))
+		assert_not_reached ();
+
+	assert (p11_index_find (test.index, cacert3, -1) == 0);
+	assert (p11_index_find (test.index, verisign, -1) != 0);
+}
+
+static void
+test_reload_gone (void)
+{
+	CK_ATTRIBUTE cacert3[] = {
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_SUBJECT, (void *)test_cacert3_ca_subject, sizeof (test_cacert3_ca_subject) },
+		{ CKA_VALUE, (void *)test_cacert3_ca_der, sizeof (test_cacert3_ca_der) },
+		{ CKA_INVALID },
+	};
+
+	CK_ATTRIBUTE verisign[] = {
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_VALUE, (void *)verisign_v1_ca, sizeof (verisign_v1_ca) },
+		{ CKA_INVALID },
+	};
+
+	CK_ATTRIBUTE *attrs;
+	CK_OBJECT_HANDLE handle;
+	int ret;
+
+	/* Just one file */
+	test_write_file (test.directory, "cacert3.cer", test_cacert3_ca_der,
+	                 sizeof (test_cacert3_ca_der));
+	test_write_file (test.directory, "verisign.cer", verisign_v1_ca,
+	                 sizeof (verisign_v1_ca));
+
+	ret = p11_token_load (test.token);
+	assert_num_eq (ret, 2);
+	handle = p11_index_find (test.index, cacert3, -1);
+	assert (handle != 0);
+	assert (p11_index_find (test.index, verisign, -1) != 0);
+
+	test_delete_file (test.directory, "cacert3.cer");
+	test_delete_file (test.directory, "verisign.cer");
+
+	attrs = p11_index_lookup (test.index, handle);
+	assert_ptr_not_null (attrs);
+	if (p11_token_reload (test.token, attrs))
+		assert_not_reached ();
+
+	assert (p11_index_find (test.index, cacert3, -1) == 0);
+	assert (p11_index_find (test.index, verisign, -1) != 0);
+}
+
+static void
+test_reload_no_origin (void)
+{
+	CK_ATTRIBUTE cacert3[] = {
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_SUBJECT, (void *)test_cacert3_ca_subject, sizeof (test_cacert3_ca_subject) },
+		{ CKA_VALUE, (void *)test_cacert3_ca_der, sizeof (test_cacert3_ca_der) },
+		{ CKA_INVALID },
+	};
+
+	if (p11_token_reload (test.token, cacert3))
+		assert_not_reached ();
+}
+
+static void
+test_write_new (void)
+{
+	CK_ATTRIBUTE original[] = {
+		{ CKA_CLASS, &data, sizeof (data) },
+		{ CKA_LABEL, "Yay!", 4 },
+		{ CKA_VALUE, "eight", 5 },
+		{ CKA_TOKEN, &truev, sizeof (truev) },
+		{ CKA_INVALID }
+	};
+
+	CK_ATTRIBUTE expected[] = {
+		{ CKA_CLASS, &data, sizeof (data) },
+		{ CKA_LABEL, "Yay!", 4 },
+		{ CKA_VALUE, "eight", 5 },
+		{ CKA_APPLICATION, "", 0 },
+		{ CKA_OBJECT_ID, "", 0 },
+		{ CKA_INVALID }
+	};
+
+	CK_OBJECT_HANDLE handle;
+	p11_array *parsed;
+	char *path;
+	CK_RV rv;
+	int ret;
+
+	rv = p11_index_add (test.index, original, 4, &handle);
+	assert_num_eq (rv, CKR_OK);
+
+	/* The expected file name */
+	path = p11_path_build (test.directory, "Yay_.p11-kit", NULL);
+	ret = p11_parse_file (test.parser, path, NULL, 0);
+	assert_num_eq (ret, P11_PARSE_SUCCESS);
+	free (path);
+
+	parsed = p11_parser_parsed (test.parser);
+	assert_num_eq (parsed->num, 1);
+
+	test_check_attrs (expected, parsed->elem[0]);
+}
+
+static void
+test_write_no_label (void)
+{
+	CK_ATTRIBUTE original[] = {
+		{ CKA_CLASS, &data, sizeof (data) },
+		{ CKA_VALUE, "eight", 5 },
+		{ CKA_TOKEN, &truev, sizeof (truev) },
+		{ CKA_INVALID }
+	};
+
+	CK_ATTRIBUTE expected[] = {
+		{ CKA_CLASS, &data, sizeof (data) },
+		{ CKA_LABEL, "", 0 },
+		{ CKA_VALUE, "eight", 5 },
+		{ CKA_APPLICATION, "", 0 },
+		{ CKA_OBJECT_ID, "", 0 },
+		{ CKA_INVALID }
+	};
+
+	CK_OBJECT_HANDLE handle;
+	p11_array *parsed;
+	char *path;
+	CK_RV rv;
+	int ret;
+
+	rv = p11_index_add (test.index, original, 4, &handle);
+	assert_num_eq (rv, CKR_OK);
+
+	/* The expected file name */
+	path = p11_path_build (test.directory, "data.p11-kit", NULL);
+	ret = p11_parse_file (test.parser, path, NULL, 0);
+	assert_num_eq (ret, P11_PARSE_SUCCESS);
+	free (path);
+
+	parsed = p11_parser_parsed (test.parser);
+	assert_num_eq (parsed->num, 1);
+
+	test_check_attrs (expected, parsed->elem[0]);
+}
+
+static void
+test_modify_multiple (void)
+{
+	const char *test_data =
+		"[p11-kit-object-v1]\n"
+		"class: data\n"
+		"label: \"first\"\n"
+		"value: \"1\"\n"
+		"\n"
+		"[p11-kit-object-v1]\n"
+		"class: data\n"
+		"label: \"second\"\n"
+		"value: \"2\"\n"
+		"\n"
+		"[p11-kit-object-v1]\n"
+		"class: data\n"
+		"label: \"third\"\n"
+		"value: \"3\"\n";
+
+	CK_ATTRIBUTE first[] = {
+		{ CKA_CLASS, &data, sizeof (data) },
+		{ CKA_LABEL, "first", 5 },
+		{ CKA_VALUE, "1", 1 },
+		{ CKA_INVALID },
+	};
+
+	CK_ATTRIBUTE second[] = {
+		{ CKA_CLASS, &data, sizeof (data) },
+		{ CKA_LABEL, "zwei", 4 },
+		{ CKA_VALUE, "2", 2 },
+		{ CKA_INVALID },
+	};
+
+	CK_ATTRIBUTE third[] = {
+		{ CKA_CLASS, &data, sizeof (data) },
+		{ CKA_LABEL, "third", 5 },
+		{ CKA_VALUE, "3", 1 },
+		{ CKA_INVALID },
+	};
+
+	CK_ATTRIBUTE match = { CKA_LABEL, "second", 6 };
+
+	CK_OBJECT_HANDLE handle;
+	p11_array *parsed;
+	char *path;
+	int ret;
+	CK_RV rv;
+
+	test_write_file (test.directory, "Test.p11-kit", test_data, strlen (test_data));
+
+	/* Reload now that we have this new file */
+	p11_token_load (test.token);
+
+	handle = p11_index_find (test.index, &match, 1);
+
+	rv = p11_index_update (test.index, handle, p11_attrs_dup (second));
+	assert_num_eq (rv, CKR_OK);
+
+	/* Now read in the file and make sure it has all the objects */
+	path = p11_path_build (test.directory, "Test.p11-kit", NULL);
+	ret = p11_parse_file (test.parser, path, NULL, 0);
+	assert_num_eq (ret, P11_PARSE_SUCCESS);
+	free (path);
+
+	parsed = p11_parser_parsed (test.parser);
+	assert_num_eq (parsed->num, 3);
+
+	/* The modified one will be first */
+	test_check_attrs (second, parsed->elem[0]);
+	test_check_attrs (first, parsed->elem[1]);
+	test_check_attrs (third, parsed->elem[2]);
+}
+
+static void
+test_remove_one (void)
+{
+	const char *test_data =
+		"[p11-kit-object-v1]\n"
+		"class: data\n"
+		"label: \"first\"\n"
+		"value: \"1\"\n"
+		"\n";
+
+	CK_ATTRIBUTE match = { CKA_LABEL, "first", 5 };
+
+	CK_OBJECT_HANDLE handle;
+	CK_RV rv;
+
+	test_write_file (test.directory, "Test.p11-kit", test_data, strlen (test_data));
+	test_check_directory (test.directory, ("Test.p11-kit", NULL));
+
+	/* Reload now that we have this new file */
+	p11_token_load (test.token);
+
+	handle = p11_index_find (test.index, &match, 1);
+	assert_num_cmp (handle, !=, 0);
+
+	rv = p11_index_remove (test.index, handle);
+	assert_num_eq (rv, CKR_OK);
+
+	/* No other files in the test directory, all files gone */
+	test_check_directory (test.directory, (NULL, NULL));
+}
+
+static void
+test_remove_multiple (void)
+{
+	const char *test_data =
+		"[p11-kit-object-v1]\n"
+		"class: data\n"
+		"label: \"first\"\n"
+		"value: \"1\"\n"
+		"\n"
+		"[p11-kit-object-v1]\n"
+		"class: data\n"
+		"label: \"second\"\n"
+		"value: \"2\"\n"
+		"\n"
+		"[p11-kit-object-v1]\n"
+		"class: data\n"
+		"label: \"third\"\n"
+		"value: \"3\"\n";
+
+	CK_ATTRIBUTE first[] = {
+		{ CKA_CLASS, &data, sizeof (data) },
+		{ CKA_LABEL, "first", 5 },
+		{ CKA_VALUE, "1", 1 },
+		{ CKA_INVALID },
+	};
+
+	CK_ATTRIBUTE third[] = {
+		{ CKA_CLASS, &data, sizeof (data) },
+		{ CKA_LABEL, "third", 5 },
+		{ CKA_VALUE, "3", 1 },
+		{ CKA_INVALID },
+	};
+
+	CK_ATTRIBUTE match = { CKA_LABEL, "second", 6 };
+
+	CK_OBJECT_HANDLE handle;
+	p11_array *parsed;
+	char *path;
+	int ret;
+	CK_RV rv;
+
+	test_write_file (test.directory, "Test.p11-kit", test_data, strlen (test_data));
+
+	/* Reload now that we have this new file */
+	p11_token_load (test.token);
+
+	handle = p11_index_find (test.index, &match, 1);
+	assert_num_cmp (handle, !=, 0);
+
+	rv = p11_index_remove (test.index, handle);
+	assert_num_eq (rv, CKR_OK);
+
+	/* Now read in the file and make sure it has all the objects */
+	path = p11_path_build (test.directory, "Test.p11-kit", NULL);
+	ret = p11_parse_file (test.parser, path, NULL, 0);
+	assert_num_eq (ret, P11_PARSE_SUCCESS);
+	free (path);
+
+	parsed = p11_parser_parsed (test.parser);
+	assert_num_eq (parsed->num, 2);
+
+	/* The modified one will be first */
+	test_check_attrs (first, parsed->elem[0]);
+	test_check_attrs (third, parsed->elem[1]);
 }
 
 int
-main (void)
+main (int argc,
+      char *argv[])
 {
-	CuString *output = CuStringNew ();
-	CuSuite* suite = CuSuiteNew ();
-	int ret;
+	p11_fixture (setup, teardown);
+	p11_testx (test_token_load, SRCDIR "/input", "/token/load");
+	p11_testx (test_token_flags, SRCDIR "/input", "/token/flags");
+	p11_testx (test_token_path, "/wheee", "/token/path");
+	p11_testx (test_token_label, "/wheee", "/token/label");
+	p11_testx (test_token_slot, "/unneeded", "/token/slot");
 
-	putenv ("P11_KIT_STRICT=1");
-	p11_debug_init ();
+	p11_fixture (NULL, NULL);
+	p11_test (test_not_writable, "/token/not-writable");
+	p11_test (test_writable_no_exist, "/token/writable-no-exist");
 
-	SUITE_ADD_TEST (suite, test_token_load);
-	SUITE_ADD_TEST (suite, test_token_flags);
-	SUITE_ADD_TEST (suite, test_token_path);
-	SUITE_ADD_TEST (suite, test_token_label);
-	SUITE_ADD_TEST (suite, test_token_slot);
+	p11_fixture (setup_temp, teardown_temp);
+	p11_test (test_writable_exists, "/token/writable-exists");
+	p11_test (test_load_found, "/token/load-found");
+	p11_test (test_load_already, "/token/load-already");
+	p11_test (test_load_unreadable, "/token/load-unreadable");
+	p11_test (test_load_gone, "/token/load-gone");
+	p11_test (test_reload_changed, "/token/reload-changed");
+	p11_test (test_reload_gone, "/token/reload-gone");
+	p11_test (test_reload_no_origin, "/token/reload-no-origin");
+	p11_test (test_write_new, "/token/write-new");
+	p11_test (test_write_no_label, "/token/write-no-label");
+	p11_test (test_modify_multiple, "/token/modify-multiple");
+	p11_test (test_remove_one, "/token/remove-one");
+	p11_test (test_remove_multiple, "/token/remove-multiple");
 
-	CuSuiteRun (suite);
-	CuSuiteSummary (suite, output);
-	CuSuiteDetails (suite, output);
-	printf ("%s\n", output->buffer);
-	ret = suite->failCount;
-	CuSuiteDelete (suite);
-	CuStringDelete (output);
-
-	return ret;
+	return p11_test_run (argc, argv);
 }

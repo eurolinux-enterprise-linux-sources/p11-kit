@@ -33,32 +33,34 @@
  */
 
 #include "config.h"
-#include "CuTest.h"
+#include "test.h"
 
 #include <stdlib.h>
-#include <stdio.h>
 
 static void
-test_success (CuTest *tc)
+test_success (void)
 {
 	/* Yup, nothing */
 }
 
 
 static void
-test_failure (CuTest *tc)
+test_failure (void)
 {
-	if (getenv ("TEST_FAIL"))
-		CuFail (tc, "Unconditional test failure due to TEST_FAIL environment variable");
+	if (getenv ("TEST_FAIL")) {
+		p11_test_fail (__FILE__, __LINE__, __FUNCTION__,
+		               "Unconditional test failure due to TEST_FAIL environment variable");
+	}
 }
 
 static void
-test_memory (CuTest *tc)
+test_memory (void)
 {
 	char *mem;
 
 	if (getenv ("TEST_FAIL")) {
 		mem = malloc (1);
+		assert (mem != NULL);
 		free (mem);
 		*mem = 1;
 	}
@@ -66,38 +68,28 @@ test_memory (CuTest *tc)
 
 
 static void
-test_leak (CuTest *tc)
+test_leak (void)
 {
 	char *mem;
 
 	if (getenv ("TEST_FAIL")) {
 		mem = malloc (1);
+		assert (mem != NULL);
 		*mem = 1;
 	}
 }
 
 int
-main (void)
+main (int argc,
+      char *argv[])
 {
-	CuString *output = CuStringNew ();
-	CuSuite* suite = CuSuiteNew ();
-	int ret;
-
-	SUITE_ADD_TEST (suite, test_success);
+	p11_test (test_success, "/test/success");
 
 	if (getenv ("TEST_FAIL")) {
-		SUITE_ADD_TEST (suite, test_failure);
-		SUITE_ADD_TEST (suite, test_memory);
-		SUITE_ADD_TEST (suite, test_leak);
+		p11_test (test_failure, "/test/failure");
+		p11_test (test_memory, "/test/memory");
+		p11_test (test_leak, "/test/leak");
 	}
 
-	CuSuiteRun (suite);
-	CuSuiteSummary (suite, output);
-	CuSuiteDetails (suite, output);
-	printf ("%s\n", output->buffer);
-	ret = suite->failCount;
-	CuSuiteDelete (suite);
-	CuStringDelete (output);
-
-	return ret;
+	return p11_test_run (argc, argv);
 }

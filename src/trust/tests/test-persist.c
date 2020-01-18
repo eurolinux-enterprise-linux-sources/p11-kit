@@ -33,8 +33,10 @@
  */
 
 #include "config.h"
-#include "CuTest.h"
+#include "test.h"
+#include "test-trust.h"
 
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -46,12 +48,11 @@
 #include "message.h"
 #include "persist.h"
 #include "pkcs11.h"
+#include "pkcs11i.h"
 #include "pkcs11x.h"
 
-#include "test-data.h"
-
 static void
-test_magic (CuTest *tc)
+test_magic (void)
 {
 	const char *input = "[p11-kit-object-v1]\n"
 	                    "class: data\n"
@@ -64,10 +65,10 @@ test_magic (CuTest *tc)
 	                    "value: \"blah\"\n"
 	                    "application: \"test-persist\"\n";
 
-	CuAssertTrue (tc, p11_persist_magic ((unsigned char *)input, strlen (input)));
-	CuAssertTrue (tc, !p11_persist_magic ((unsigned char *)input, 5));
-	CuAssertTrue (tc, p11_persist_magic ((unsigned char *)other, strlen (other)));
-	CuAssertTrue (tc, !p11_persist_magic ((unsigned char *)"blah", 4));
+	assert (p11_persist_magic ((unsigned char *)input, strlen (input)));
+	assert (!p11_persist_magic ((unsigned char *)input, 5));
+	assert (p11_persist_magic ((unsigned char *)other, strlen (other)));
+	assert (!p11_persist_magic ((unsigned char *)"blah", 4));
 }
 
 static p11_array *
@@ -94,9 +95,9 @@ args_to_array (void *arg,
 }
 
 static void
-check_read_msg (CuTest *tc,
-                const char *file,
+check_read_msg (const char *file,
                 int line,
+                const char *function,
                 const char *input,
                 p11_array *expected)
 {
@@ -108,14 +109,18 @@ check_read_msg (CuTest *tc,
 	objects = p11_array_new (p11_attrs_free);
 
 	if (p11_persist_read (persist, "test", (const unsigned char *)input, strlen (input), objects)) {
-		CuAssert_Line (tc, file, line, "decoding should have failed", expected != NULL);
+		if (expected == NULL)
+			p11_test_fail (file, line, function, "decoding should have failed");
 		for (i = 0; i < expected->num; i++) {
-			CuAssert_Line (tc, file, line, "too few objects read", i < objects->num);
-			test_check_attrs_msg (tc, file, line, expected->elem[i], objects->elem[i]);
+			if (i >= objects->num)
+				p11_test_fail (file, line, function, "too few objects read");
+			test_check_attrs_msg (file, line, function, expected->elem[i], objects->elem[i]);
 		}
-		CuAssert_Line (tc, file, line, "too many objects read", i == objects->num);
+		if (i != objects->num)
+			p11_test_fail (file, line, function, "too many objects read");
 	} else {
-		CuAssert_Line (tc, file, line, "decoding failed", expected == NULL);
+		if (expected != NULL)
+			p11_test_fail (file, line, function, "decoding failed");
 	}
 
 	p11_array_free (objects);
@@ -123,11 +128,43 @@ check_read_msg (CuTest *tc,
 	p11_array_free (expected);
 }
 
-#define check_read_success(tc, input, objs) \
-	check_read_msg (tc, __FILE__, __LINE__, input, args_to_array objs)
+static void
+check_write_msg (const char *file,
+                 int line,
+                 const char *function,
+                 const char *expected,
+                 p11_array *input)
+{
+	p11_persist *persist;
+	p11_buffer buf;
+	int i;
 
-#define check_read_failure(tc, input) \
-	check_read_msg (tc, __FILE__, __LINE__, input, NULL)
+	persist = p11_persist_new ();
+	p11_buffer_init_null (&buf, 0);
+
+	for (i = 0; i < input->num; i++) {
+		if (!p11_persist_write (persist, input->elem[i], &buf))
+			p11_test_fail (file, line, function, "persist write failed");
+	}
+
+	if (strcmp (buf.data, expected) != 0) {
+	         p11_test_fail (file, line, function, "persist doesn't match: (\n%s----\n%s\n)", \
+	                        expected, (char *)buf.data);
+	}
+
+	p11_buffer_uninit (&buf);
+	p11_array_free (input);
+	p11_persist_free (persist);
+}
+
+#define check_read_success(input, objs) \
+	check_read_msg (__FILE__, __LINE__, __FUNCTION__, input, args_to_array objs)
+
+#define check_read_failure(input) \
+	check_read_msg (__FILE__, __LINE__, __FUNCTION__, input, NULL)
+
+#define check_write_success(expected, inputs) \
+	check_write_msg (__FILE__, __LINE__, __FUNCTION__, expected, args_to_array inputs)
 
 static CK_OBJECT_CLASS certificate = CKO_CERTIFICATE;
 static CK_CERTIFICATE_TYPE x509 = CKC_X_509;
@@ -137,53 +174,55 @@ static CK_BBOOL truev = CK_TRUE;
 static CK_BBOOL falsev = CK_FALSE;
 
 static void
-test_simple (CuTest *tc)
+test_simple (void)
 {
-	const char *input = "[p11-kit-object-v1]\n"
+	const char *output = "[p11-kit-object-v1]\n"
 	                    "class: data\n"
 	                    "value: \"blah\"\n"
-	                    "application: \"test-persist\"\n";
+	                    "application: \"test-persist\"\n\n";
 
-	CK_ATTRIBUTE expected[] = {
+	CK_ATTRIBUTE attrs[] = {
 		{ CKA_CLASS, &data, sizeof (data) },
 		{ CKA_VALUE, "blah", 4 },
 		{ CKA_APPLICATION, "test-persist", 12 },
 		{ CKA_INVALID },
 	};
 
-	check_read_success (tc, input, (expected, NULL));
+	check_read_success (output, (attrs, NULL));
+	check_write_success (output, (attrs, NULL));
 }
 
 static void
-test_number (CuTest *tc)
+test_number (void)
 {
-	const char *input = "[p11-kit-object-v1]\n"
+	const char *output = "[p11-kit-object-v1]\n"
 	                    "class: data\n"
-	                    "value: 29202390\n"
-	                    "application: \"test-persist\"\n";
+	                    "value-len: 29202390\n"
+	                    "application: \"test-persist\"\n\n";
 
 	CK_ULONG value = 29202390;
 
-	CK_ATTRIBUTE expected[] = {
+	CK_ATTRIBUTE attrs[] = {
 		{ CKA_CLASS, &data, sizeof (data) },
-		{ CKA_VALUE, &value, sizeof (value) },
+		{ CKA_VALUE_LEN, &value, sizeof (value) },
 		{ CKA_APPLICATION, "test-persist", 12 },
 		{ CKA_INVALID },
 	};
 
-	check_read_success (tc, input, (expected, NULL));
+	check_read_success (output, (attrs, NULL));
+	check_write_success (output, (attrs, NULL));
 }
 
 static void
-test_bool (CuTest *tc)
+test_bool (void)
 {
-	const char *input = "[p11-kit-object-v1]\n"
+	const char *output = "[p11-kit-object-v1]\n"
 	                    "class: data\n"
 	                    "private: true\n"
 	                    "modifiable: false\n"
-	                    "application: \"test-persist\"\n";
+	                    "application: \"test-persist\"\n\n";
 
-	CK_ATTRIBUTE expected[] = {
+	CK_ATTRIBUTE attrs[] = {
 		{ CKA_CLASS, &data, sizeof (data) },
 		{ CKA_PRIVATE, &truev, sizeof (truev) },
 		{ CKA_MODIFIABLE, &falsev, sizeof (falsev) },
@@ -191,72 +230,143 @@ test_bool (CuTest *tc)
 		{ CKA_INVALID },
 	};
 
-	check_read_success (tc, input, (expected, NULL));
+	check_read_success (output, (attrs, NULL));
+	check_write_success (output, (attrs, NULL));
 }
 
 static void
-test_oid (CuTest *tc)
+test_oid (void)
 {
-	const char *input = "[p11-kit-object-v1]\n"
+	const char *output = "[p11-kit-object-v1]\n"
 	                    "class: data\n"
-	                    "object-id: 1.2.3.4";
+	                    "object-id: 1.2.3.4\n\n";
 
-	CK_ATTRIBUTE expected[] = {
+	CK_ATTRIBUTE attrs[] = {
 		{ CKA_CLASS, &data, sizeof (data) },
 		{ CKA_OBJECT_ID, "\x06\x03*\x03\x04", 5 },
 		{ CKA_INVALID },
 	};
 
-	check_read_success (tc, input, (expected, NULL));
+	check_read_success (output, (attrs, NULL));
+	check_write_success (output, (attrs, NULL));
 }
 
 static void
-test_constant (CuTest *tc)
+test_constant (void)
 {
-	const char *input = "[p11-kit-object-v1]\n"
+	const char *output = "[p11-kit-object-v1]\n"
 	                    "class: data\n"
-	                    "trust-server-auth: nss-trust-unknown";
+	                    "certificate-type: x-509-attr-cert\n"
+	                    "key-type: rsa\n"
+	                    "x-assertion-type: x-pinned-certificate\n"
+	                    "certificate-category: authority\n"
+	                    "mechanism-type: rsa-pkcs-key-pair-gen\n"
+	                    "trust-server-auth: nss-trust-unknown\n\n";
 
 	CK_TRUST trust = CKT_NSS_TRUST_UNKNOWN;
+	CK_CERTIFICATE_TYPE type = CKC_X_509_ATTR_CERT;
+	CK_X_ASSERTION_TYPE ass = CKT_X_PINNED_CERTIFICATE;
+	CK_MECHANISM_TYPE mech = CKM_RSA_PKCS_KEY_PAIR_GEN;
+	CK_ULONG category = 2;
+	CK_KEY_TYPE key = CKK_RSA;
 
-	CK_ATTRIBUTE expected[] = {
+	CK_ATTRIBUTE attrs[] = {
 		{ CKA_CLASS, &data, sizeof (data) },
+		{ CKA_CERTIFICATE_TYPE, &type, sizeof (type) },
+		{ CKA_KEY_TYPE, &key, sizeof (key) },
+		{ CKA_X_ASSERTION_TYPE, &ass, sizeof (ass) },
+		{ CKA_CERTIFICATE_CATEGORY, &category, sizeof (category) },
+		{ CKA_MECHANISM_TYPE, &mech, sizeof (mech) },
 		{ CKA_TRUST_SERVER_AUTH, &trust, sizeof (trust) },
 		{ CKA_INVALID },
 	};
 
-	check_read_success (tc, input, (expected, NULL));
+	check_read_success (output, (attrs, NULL));
+	check_write_success (output, (attrs, NULL));
 }
 
 static void
-test_multiple (CuTest *tc)
+test_unknown (void)
 {
-	const char *input = "[p11-kit-object-v1]\n"
+	const char *output = "[p11-kit-object-v1]\n"
 	                    "class: data\n"
-	                    "object-id: 1.2.3.4\n"
+	                    "38383838: \"the-value-here\"\n\n";
+
+	CK_ATTRIBUTE attrs[] = {
+		{ CKA_CLASS, &data, sizeof (data) },
+		{ 38383838, "the-value-here", 14 },
+		{ CKA_INVALID },
+	};
+
+	check_read_success (output, (attrs, NULL));
+	check_write_success (output, (attrs, NULL));
+}
+
+static void
+test_multiple (void)
+{
+	const char *output = "[p11-kit-object-v1]\n"
+	                    "class: data\n"
+	                    "object-id: 1.2.3.4\n\n"
 	                    "[p11-kit-object-v1]\n"
 	                    "class: nss-trust\n"
-	                    "trust-server-auth: nss-trust-unknown";
+	                    "trust-server-auth: nss-trust-unknown\n\n";
 
 	CK_TRUST trust = CKT_NSS_TRUST_UNKNOWN;
 
-	CK_ATTRIBUTE expected1[] = {
+	CK_ATTRIBUTE attrs1[] = {
 		{ CKA_CLASS, &data, sizeof (data) },
 		{ CKA_OBJECT_ID, "\x06\x03*\x03\x04", 5 },
 		{ CKA_INVALID },
 	};
 
-	CK_ATTRIBUTE expected2[] = {
+	CK_ATTRIBUTE attrs2[] = {
 		{ CKA_CLASS, &nss_trust, sizeof (nss_trust) },
 		{ CKA_TRUST_SERVER_AUTH, &trust, sizeof (trust) },
 		{ CKA_INVALID },
 	};
 
-	check_read_success (tc, input, (expected1, expected2, NULL));
+	check_read_success (output, (attrs1, attrs2, NULL));
+	check_write_success (output, (attrs1, attrs2, NULL));
 }
 
 static void
-test_pem_block (CuTest *tc)
+test_pem_block (void)
+{
+	const char *output = "[p11-kit-object-v1]\n"
+	                    "id: \"292c92\"\n"
+	                    "trusted: true\n"
+	    "-----BEGIN CERTIFICATE-----\n"
+	    "MIICPDCCAaUCED9pHoGc8JpK83P/uUii5N0wDQYJKoZIhvcNAQEFBQAwXzELMAkG\n"
+	    "A1UEBhMCVVMxFzAVBgNVBAoTDlZlcmlTaWduLCBJbmMuMTcwNQYDVQQLEy5DbGFz\n"
+	    "cyAxIFB1YmxpYyBQcmltYXJ5IENlcnRpZmljYXRpb24gQXV0aG9yaXR5MB4XDTk2\n"
+	    "MDEyOTAwMDAwMFoXDTI4MDgwMjIzNTk1OVowXzELMAkGA1UEBhMCVVMxFzAVBgNV\n"
+	    "BAoTDlZlcmlTaWduLCBJbmMuMTcwNQYDVQQLEy5DbGFzcyAxIFB1YmxpYyBQcmlt\n"
+	    "YXJ5IENlcnRpZmljYXRpb24gQXV0aG9yaXR5MIGfMA0GCSqGSIb3DQEBAQUAA4GN\n"
+	    "ADCBiQKBgQDlGb9to1ZhLZlIcfZn3rmN67eehoAKkQ76OCWvRoiC5XOooJskXQ0f\n"
+	    "zGVuDLDQVoQYh5oGmxChc9+0WDlrbsH2FdWoqD+qEgaNMax/sDTXjzRniAnNFBHi\n"
+	    "TkVWaR94AoDa3EeRKbs2yWNcxeDXLYd7obcysHswuiovMaruo2fa2wIDAQABMA0G\n"
+	    "CSqGSIb3DQEBBQUAA4GBAFgVKTk8d6PaXCUDfGD67gmZPCcQcMgMCeazh88K4hiW\n"
+	    "NWLMv5sneYlfycQJ9M61Hd8qveXbhpxoJeUwfLaJFf5n0a3hUKw8fGJLj7qE1xIV\n"
+	    "Gx/KXQ/BUpQqEZnae88MNhPVNdwQGVnqlMEAv3WP2fr9dgTbYruQagPZRjXZ+Hxb\n"
+	    "-----END CERTIFICATE-----\n"
+	                    "\n";
+
+	CK_ATTRIBUTE attrs[] = {
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_ID, "292c92", 6, },
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_VALUE, &verisign_v1_ca, sizeof (verisign_v1_ca) },
+		{ CKA_TRUSTED, &truev, sizeof (truev) },
+		{ CKA_INVALID },
+	};
+
+	check_read_success (output, (attrs, NULL));
+	check_write_success (output, (attrs, NULL));
+}
+
+static void
+test_pem_middle (void)
 {
 	const char *input = "[p11-kit-object-v1]\n"
 	                    "class: certificate\n"
@@ -286,11 +396,11 @@ test_pem_block (CuTest *tc)
 		{ CKA_INVALID },
 	};
 
-	check_read_success (tc, input, (expected, NULL));
+	check_read_success (input, (expected, NULL));
 }
 
 static void
-test_pem_invalid (CuTest *tc)
+test_pem_invalid (void)
 {
 	const char *input = "[p11-kit-object-v1]\n"
 	                    "class: certificate\n"
@@ -311,13 +421,13 @@ test_pem_invalid (CuTest *tc)
 
 	p11_message_quiet ();
 
-	check_read_failure (tc, input);
+	check_read_failure (input);
 
 	p11_message_loud ();
 }
 
 static void
-test_pem_unsupported (CuTest *tc)
+test_pem_unsupported (void)
 {
 	const char *input = "[p11-kit-object-v1]\n"
 	                    "class: certificate\n"
@@ -327,13 +437,13 @@ test_pem_unsupported (CuTest *tc)
 
 	p11_message_quiet ();
 
-	check_read_failure (tc, input);
+	check_read_failure (input);
 
 	p11_message_loud ();
 }
 
 static void
-test_pem_first (CuTest *tc)
+test_pem_first (void)
 {
 	const char *input = "-----BEGIN BLOCK1-----\n"
 	                    "aYNNXqshlVxCdo8QfKeXh3GUzd/yn4LYIVgQrx4a\n"
@@ -343,13 +453,13 @@ test_pem_first (CuTest *tc)
 
 	p11_message_quiet ();
 
-	check_read_failure (tc, input);
+	check_read_failure (input);
 
 	p11_message_loud ();
 }
 
 static void
-test_skip_unknown (CuTest *tc)
+test_skip_unknown (void)
 {
 	const char *input = "[version-2]\n"
 	                    "class: data\n"
@@ -371,13 +481,13 @@ test_skip_unknown (CuTest *tc)
 
 	p11_message_quiet ();
 
-	check_read_success (tc, input, (expected2, NULL));
+	check_read_success (input, (expected2, NULL));
 
 	p11_message_loud ();
 }
 
 static void
-test_bad_value (CuTest *tc)
+test_bad_value (void)
 {
 	const char *input = "[p11-kit-object-v1]\n"
 	                    "class: data\n"
@@ -385,13 +495,13 @@ test_bad_value (CuTest *tc)
 
 	p11_message_quiet ();
 
-	check_read_failure (tc, input);
+	check_read_failure (input);
 
 	p11_message_loud ();
 }
 
 static void
-test_bad_oid (CuTest *tc)
+test_bad_oid (void)
 {
 	const char *input = "[p11-kit-object-v1]\n"
 	                    "class: data\n"
@@ -399,13 +509,13 @@ test_bad_oid (CuTest *tc)
 
 	p11_message_quiet ();
 
-	check_read_failure (tc, input);
+	check_read_failure (input);
 
 	p11_message_loud ();
 }
 
 static void
-test_bad_field (CuTest *tc)
+test_bad_field (void)
 {
 	const char *input = "[p11-kit-object-v1]\n"
 	                    "class: data\n"
@@ -413,13 +523,13 @@ test_bad_field (CuTest *tc)
 
 	p11_message_quiet ();
 
-	check_read_failure (tc, input);
+	check_read_failure (input);
 
 	p11_message_loud ();
 }
 
 static void
-test_attribute_first (CuTest *tc)
+test_attribute_first (void)
 {
 	const char *input = "class: data\n"
 	                    "[p11-kit-object-v1]\n"
@@ -427,45 +537,72 @@ test_attribute_first (CuTest *tc)
 
 	p11_message_quiet ();
 
-	check_read_failure (tc, input);
+	check_read_failure (input);
 
 	p11_message_loud ();
 }
 
-int
-main (void)
+static void
+test_not_boolean (void)
 {
-	CuString *output = CuStringNew ();
-	CuSuite* suite = CuSuiteNew ();
-	int ret;
+	const char *output = "[p11-kit-object-v1]\n"
+	                    "private: \"x\"\n\n";
 
-	putenv ("P11_KIT_STRICT=1");
-	p11_debug_init ();
+	CK_ATTRIBUTE attrs[] = {
+		{ CKA_PRIVATE, "x", 1 },
+		{ CKA_INVALID },
+	};
 
-	SUITE_ADD_TEST (suite, test_magic);
-	SUITE_ADD_TEST (suite, test_simple);
-	SUITE_ADD_TEST (suite, test_number);
-	SUITE_ADD_TEST (suite, test_bool);
-	SUITE_ADD_TEST (suite, test_oid);
-	SUITE_ADD_TEST (suite, test_constant);
-	SUITE_ADD_TEST (suite, test_multiple);
-	SUITE_ADD_TEST (suite, test_pem_block);
-	SUITE_ADD_TEST (suite, test_pem_invalid);
-	SUITE_ADD_TEST (suite, test_pem_unsupported);
-	SUITE_ADD_TEST (suite, test_pem_first);
-	SUITE_ADD_TEST (suite, test_bad_value);
-	SUITE_ADD_TEST (suite, test_bad_oid);
-	SUITE_ADD_TEST (suite, test_bad_field);
-	SUITE_ADD_TEST (suite, test_skip_unknown);
-	SUITE_ADD_TEST (suite, test_attribute_first);
+	check_write_success (output, (attrs, NULL));
+}
 
-	CuSuiteRun (suite);
-	CuSuiteSummary (suite, output);
-	CuSuiteDetails (suite, output);
-	printf ("%s\n", output->buffer);
-	ret = suite->failCount;
-	CuSuiteDelete (suite);
-	CuStringDelete (output);
+static void
+test_not_ulong (void)
+{
+	char buffer[sizeof (CK_ULONG) + 1];
+	char *output;
 
-	return ret;
+	CK_ATTRIBUTE attrs[] = {
+		{ CKA_BITS_PER_PIXEL, "xx", 2 },
+		{ CKA_VALUE, buffer, sizeof (CK_ULONG) },
+		{ CKA_INVALID },
+	};
+
+	memset (buffer, 'x', sizeof (buffer));
+	buffer[sizeof (CK_ULONG)] = 0;
+
+	if (asprintf (&output, "[p11-kit-object-v1]\n"
+	                       "bits-per-pixel: \"xx\"\n"
+	                       "value: \"%s\"\n\n", buffer) < 0)
+		assert_not_reached ();
+
+	check_write_success (output, (attrs, NULL));
+	free (output);
+}
+
+int
+main (int argc,
+      char *argv[])
+{
+	p11_test (test_magic, "/persist/magic");
+	p11_test (test_simple, "/persist/simple");
+	p11_test (test_number, "/persist/number");
+	p11_test (test_bool, "/persist/bool");
+	p11_test (test_oid, "/persist/oid");
+	p11_test (test_constant, "/persist/constant");
+	p11_test (test_unknown, "/persist/unknown");
+	p11_test (test_multiple, "/persist/multiple");
+	p11_test (test_pem_block, "/persist/pem_block");
+	p11_test (test_pem_middle, "/persist/pem-middle");
+	p11_test (test_pem_invalid, "/persist/pem_invalid");
+	p11_test (test_pem_unsupported, "/persist/pem_unsupported");
+	p11_test (test_pem_first, "/persist/pem_first");
+	p11_test (test_bad_value, "/persist/bad_value");
+	p11_test (test_bad_oid, "/persist/bad_oid");
+	p11_test (test_bad_field, "/persist/bad_field");
+	p11_test (test_skip_unknown, "/persist/skip_unknown");
+	p11_test (test_attribute_first, "/persist/attribute_first");
+	p11_test (test_not_boolean, "/persist/not-boolean");
+	p11_test (test_not_ulong, "/persist/not-ulong");
+	return p11_test_run (argc, argv);
 }

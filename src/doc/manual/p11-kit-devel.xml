@@ -149,6 +149,9 @@ $ make install
 			during the build, then certain features will be disabled.</para>
 
 			<itemizedlist>
+				<listitem><para><command>libffi</command> for sharing of PKCS#11 modules
+				between multiple callers in the same process. It is highly recommended that
+				this dependency be treated as a required dependency.</para></listitem>
 				<listitem><para><command>gtk-doc</command> is required to build the reference
 				manual. Use <literal>--enable-doc</literal> to control this
 				dependency.</para></listitem>
@@ -157,6 +160,10 @@ $ make install
 				dependency.</para></listitem>
 				<listitem><para><command>libtasn1</command> is required to build the trust
 				module and code that interacts with certificates.</para></listitem>
+				<listitem><para><command>freebl3</command> (developed as part of the NSS
+				code base) is an optional dependency that may be used to meet policy
+				requirements of system builders. Enabling this dependency provides no other
+				advantage.</para></listitem>
 			</itemizedlist>
 
 		</section>

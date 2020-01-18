@@ -80,8 +80,17 @@ host_triplet = @host@
 DIST_COMMON = $(top_srcdir)/build/Makefile.decl $(srcdir)/Makefile.in \
 	$(srcdir)/Makefile.am $(top_srcdir)/configure \
 	$(am__configure_deps) $(srcdir)/config.h.in ABOUT-NLS AUTHORS \
-	COPYING ChangeLog INSTALL NEWS README compile config.guess \
-	config.rpath config.sub depcomp install-sh missing ltmain.sh
+	COPYING ChangeLog NEWS README build/litter/compile \
+	build/litter/config.guess build/litter/config.rpath \
+	build/litter/config.sub build/litter/depcomp \
+	build/litter/install-sh build/litter/missing \
+	build/litter/ltmain.sh $(top_srcdir)/build/litter/compile \
+	$(top_srcdir)/build/litter/config.guess \
+	$(top_srcdir)/build/litter/config.rpath \
+	$(top_srcdir)/build/litter/config.sub \
+	$(top_srcdir)/build/litter/install-sh \
+	$(top_srcdir)/build/litter/ltmain.sh \
+	$(top_srcdir)/build/litter/missing
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/build/m4/gettext.m4 \
@@ -160,7 +169,7 @@ am__define_uniq_tagged_files = \
 ETAGS = etags
 CTAGS = ctags
 CSCOPE = cscope
-DIST_SUBDIRS = build common p11-kit trust tools doc po
+DIST_SUBDIRS = common p11-kit trust doc po
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 distdir = $(PACKAGE)-$(VERSION)
 top_distdir = $(distdir)
@@ -250,6 +259,8 @@ INTL_MACOSX_LIBS = @INTL_MACOSX_LIBS@
 LCOV = @LCOV@
 LD = @LD@
 LDFLAGS = @LDFLAGS@
+LIBFFI_CFLAGS = @LIBFFI_CFLAGS@
+LIBFFI_LIBS = @LIBFFI_LIBS@
 LIBICONV = @LIBICONV@
 LIBINTL = @LIBINTL@
 LIBOBJS = @LIBOBJS@
@@ -368,21 +379,22 @@ WEBBASE = /srv/p11-glue.freedesktop.org/www
 @WITH_TRUST_MODULE_FALSE@TRUST_DIR = 
 @WITH_TRUST_MODULE_TRUE@TRUST_DIR = trust
 SUBDIRS = \
-	build \
 	common \
 	p11-kit \
 	$(TRUST_DIR) \
-	tools \
 	doc \
 	po
 
 ACLOCAL_AMFLAGS = -I build/m4
 DISTCHECK_CONFIGURE_FLAGS = \
 	--enable-doc \
-	--disable-coverage
+	--disable-coverage \
+	--enable-strict \
+	CFLAGS='-O2'
 
 EXTRA_DIST = \
-	config.rpath \
+	build/Makefile.tests \
+	build/Makefile.decl \
 	HACKING
 
 all: config.h
@@ -872,6 +884,11 @@ memcheck:
 leakcheck:
 	@for dir in $(SUBDIRS); do \
 		test "$$dir" = "." || $(MAKE) -C $$dir leakcheck; \
+	done
+
+hellcheck:
+	@for dir in $(SUBDIRS); do \
+		test "$$dir" = "." || $(MAKE) -C $$dir hellcheck; \
 	done
 
 dist-hook:

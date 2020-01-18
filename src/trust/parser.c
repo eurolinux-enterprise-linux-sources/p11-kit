@@ -40,7 +40,7 @@
 #define P11_DEBUG_FLAG P11_DEBUG_TRUST
 #include "debug.h"
 #include "dict.h"
-#include "hash.h"
+#include "digest.h"
 #include "message.h"
 #include "module.h"
 #include "oid.h"
@@ -59,20 +59,23 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 struct _p11_parser {
-	p11_index *index;
 	p11_asn1_cache *asn1_cache;
 	p11_dict *asn1_defs;
+	bool asn1_owned;
 	p11_persist *persist;
 	char *basename;
+	p11_array *parsed;
+	p11_array *formats;
 	int flags;
 };
 
-#define ID_LENGTH P11_HASH_SHA1_LEN
+#define ID_LENGTH P11_DIGEST_SHA1_LEN
 
 typedef int (* parser_func)   (p11_parser *parser,
                                const unsigned char *data,
@@ -131,114 +134,20 @@ populate_trust (p11_parser *parser,
 	return p11_attrs_build (attrs, &trusted, &distrust, NULL);
 }
 
-static bool
-lookup_cert_duplicate (p11_index *index,
-                       CK_ATTRIBUTE *attrs,
-                       CK_OBJECT_HANDLE *handle,
-                       CK_ATTRIBUTE **dupl)
-{
-	CK_OBJECT_CLASS klass = CKO_CERTIFICATE;
-	CK_ATTRIBUTE *value;
-
-	CK_ATTRIBUTE match[] = {
-		{ CKA_VALUE, },
-		{ CKA_CLASS, &klass, sizeof (klass) },
-		{ CKA_INVALID },
-	};
-
-	/*
-	 * TODO: This will need to be adapted when we support reload on
-	 * the fly, but for now since we only load once, we can assume
-	 * that any certs already present in the index are duplicates.
-	 */
-
-	value = p11_attrs_find_valid (attrs, CKA_VALUE);
-	if (value != NULL) {
-		memcpy (match, value, sizeof (CK_ATTRIBUTE));
-		*handle = p11_index_find (index, match, -1);
-		if (*handle != 0) {
-			*dupl = p11_index_lookup (index, *handle);
-			return true;
-		}
-	}
-
-	return false;
-}
-
-static char *
-pull_cert_label (CK_ATTRIBUTE *attrs)
-{
-	char *label;
-	size_t len;
-
-	label = p11_attrs_find_value (attrs, CKA_LABEL, &len);
-	if (label)
-		label = strndup (label, len);
-
-	return label;
-}
-
-static int
-calc_cert_priority (CK_ATTRIBUTE *attrs)
-{
-	CK_BBOOL boolv;
-
-	enum {
-		PRI_UNKNOWN,
-		PRI_TRUSTED,
-		PRI_DISTRUST
-	};
-
-	if (p11_attrs_find_bool (attrs, CKA_X_DISTRUSTED, &boolv) && boolv)
-		return PRI_DISTRUST;
-	else if (p11_attrs_find_bool (attrs, CKA_TRUSTED, &boolv) && boolv)
-		return PRI_TRUSTED;
-
-	return PRI_UNKNOWN;
-}
-
 static void
 sink_object (p11_parser *parser,
              CK_ATTRIBUTE *attrs)
 {
-	CK_OBJECT_HANDLE handle;
 	CK_OBJECT_CLASS klass;
-	CK_ATTRIBUTE *dupl;
-	char *label;
-	CK_RV rv;
-
-	/* By default not replacing anything */
-	handle = 0;
 
 	if (p11_attrs_find_ulong (attrs, CKA_CLASS, &klass) &&
 	    klass == CKO_CERTIFICATE) {
 		attrs = populate_trust (parser, attrs);
 		return_if_fail (attrs != NULL);
-
-		if (lookup_cert_duplicate (parser->index, attrs, &handle, &dupl)) {
-
-			/* This is not a good place to be for a well configured system */
-			label = pull_cert_label (dupl);
-			p11_message ("duplicate '%s' certificate found in: %s",
-			             label ? label : "?", parser->basename);
-			free (label);
-
-			/*
-			 * Nevertheless we provide predictable behavior about what
-			 * overrides what. If we have a lower or equal priority
-			 * to what's there, then just go away, otherwise replace.
-			 */
-			if (calc_cert_priority (attrs) <= calc_cert_priority (dupl)) {
-				p11_attrs_free (attrs);
-				return;
-			}
-		}
 	}
 
-	/* If handle is zero, this just adds */
-	rv = p11_index_replace (parser->index, handle, attrs);
-	if (rv != CKR_OK)
-		p11_message ("couldn't load file into objects: %s", parser->basename);
+	if (!p11_array_push (parser->parsed, attrs))
+		return_if_reached ();
 }
 
 static CK_ATTRIBUTE *
@@ -259,10 +168,10 @@ certificate_attrs (p11_parser *parser,
 	return p11_attrs_build (NULL, &klass, &modifiable, &certificate_type, &value, id, NULL);
 }
 
-static int
-parse_der_x509_certificate (p11_parser *parser,
-                            const unsigned char *data,
-                            size_t length)
+int
+p11_parser_format_x509 (p11_parser *parser,
+                        const unsigned char *data,
+                        size_t length)
 {
 	char message[ASN1_MAX_ERROR_DESCRIPTION_SIZE];
 	CK_BYTE idv[ID_LENGTH];
@@ -294,44 +203,75 @@ parse_der_x509_certificate (p11_parser *parser,
 static CK_ATTRIBUTE *
 extension_attrs (p11_parser *parser,
                  CK_ATTRIBUTE *id,
+                 CK_ATTRIBUTE *public_key_info,
+                 const char *oid_str,
                  const unsigned char *oid_der,
-                 CK_BBOOL vcritical,
-                 const unsigned char *ext_der,
-                 int ext_len)
+                 bool critical,
+                 const unsigned char *value,
+                 int length)
 {
 	CK_OBJECT_CLASS klassv = CKO_X_CERTIFICATE_EXTENSION;
 	CK_BBOOL modifiablev = CK_FALSE;
 
 	CK_ATTRIBUTE klass = { CKA_CLASS, &klassv, sizeof (klassv) };
 	CK_ATTRIBUTE modifiable = { CKA_MODIFIABLE, &modifiablev, sizeof (modifiablev) };
-	CK_ATTRIBUTE critical = { CKA_X_CRITICAL, &vcritical, sizeof (vcritical) };
 	CK_ATTRIBUTE oid = { CKA_OBJECT_ID, (void *)oid_der, p11_oid_length (oid_der) };
-	CK_ATTRIBUTE value = { CKA_VALUE, (void *)ext_der, ext_len };
 
-	if (ext_der == NULL)
-		value.type = CKA_INVALID;
+	CK_ATTRIBUTE *attrs;
+	node_asn *dest;
+	unsigned char *der;
+	size_t len;
+	int ret;
 
-	return p11_attrs_build (NULL, id, &klass, &modifiable, &oid, &critical, &value, NULL);
+	attrs = p11_attrs_build (NULL, id, public_key_info, &klass, &modifiable, &oid, NULL);
+	return_val_if_fail (attrs != NULL, NULL);
+
+	dest = p11_asn1_create (parser->asn1_defs, "PKIX1.Extension");
+	return_val_if_fail (dest != NULL, NULL);
+
+	ret = asn1_write_value (dest, "extnID", oid_str, 1);
+	return_val_if_fail (ret == ASN1_SUCCESS, NULL);
+
+	if (critical)
+		ret = asn1_write_value (dest, "critical", "TRUE", 1);
+	return_val_if_fail (ret == ASN1_SUCCESS, NULL);
+
+	ret = asn1_write_value (dest, "extnValue", value, length);
+	return_val_if_fail (ret == ASN1_SUCCESS, NULL);
+
+	der = p11_asn1_encode (dest, &len);
+	return_val_if_fail (der != NULL, NULL);
+
+	attrs = p11_attrs_take (attrs, CKA_VALUE, der, len);
+	return_val_if_fail (attrs != NULL, NULL);
+
+	/* An opmitization so that the builder can get at this without parsing */
+	p11_asn1_cache_take (parser->asn1_cache, dest, "PKIX1.Extension", der, len);
+	return attrs;
 }
 
 static CK_ATTRIBUTE *
 stapled_attrs (p11_parser *parser,
                CK_ATTRIBUTE *id,
-               const unsigned char *oid,
-               CK_BBOOL critical,
+               CK_ATTRIBUTE *public_key_info,
+               const char *oid_str,
+               const unsigned char *oid_der,
+               bool critical,
                node_asn *ext)
 {
 	CK_ATTRIBUTE *attrs;
 	unsigned char *der;
 	size_t len;
 
-	attrs = extension_attrs (parser, id, oid, critical, NULL, 0);
-	return_val_if_fail (attrs != NULL, NULL);
-
 	der = p11_asn1_encode (ext, &len);
 	return_val_if_fail (der != NULL, NULL);
 
-	return p11_attrs_take (attrs, CKA_VALUE, der, len);
+	attrs = extension_attrs (parser, id, public_key_info, oid_str, oid_der,
+	                         critical, der, len);
+	return_val_if_fail (attrs != NULL, NULL);
+
+	free (der);
+	return attrs;
 }
 
 static p11_dict *
@@ -341,8 +281,7 @@ load_seq_of_oid_str (node_asn *node,
 	p11_dict *oids;
 	char field[128];
 	char *oid;
-	int len;
-	int ret;
+	size_t len;
 	int i;
 
 	oids = p11_dict_new (p11_dict_str_hash, p11_dict_str_equal, free, NULL);
@@ -351,18 +290,9 @@ load_seq_of_oid_str (node_asn *node,
 		if (snprintf (field, sizeof (field), "%s.?%u", seqof, i) < 0)
 			return_val_if_reached (NULL);
 
-		len = 0;
-		ret = asn1_read_value (node, field, NULL, &len);
-		if (ret == ASN1_ELEMENT_NOT_FOUND)
+		oid = p11_asn1_read (node, field, &len);
+		if (oid == NULL)
 			break;
-
-		return_val_if_fail (ret == ASN1_MEM_ERROR, NULL);
-
-		oid = malloc (len + 1);
-		return_val_if_fail (oid != NULL, NULL);
-
-		ret = asn1_read_value (node, field, oid, &len);
-		return_val_if_fail (ret == ASN1_SUCCESS, NULL);
 
 		if (!p11_dict_set (oids, oid, oid))
 			return_val_if_reached (NULL);
@@ -374,8 +304,10 @@ load_seq_of_oid_str (node_asn *node,
 static CK_ATTRIBUTE *
 stapled_eku_attrs (p11_parser *parser,
                    CK_ATTRIBUTE *id,
-                   const unsigned char *oid,
-                   CK_BBOOL critical,
+                   CK_ATTRIBUTE *public_key_info,
+                   const char *oid_str,
+                   const unsigned char *oid_der,
+                   bool critical,
                    p11_dict *oid_strs)
 {
 	CK_ATTRIBUTE *attrs;
@@ -421,7 +353,7 @@ stapled_eku_attrs (p11_parser *parser,
 	}
 
 
-	attrs = stapled_attrs (parser, id, oid, critical, dest);
+	attrs = stapled_attrs (parser, id, public_key_info, oid_str, oid_der, critical, dest);
 	asn1_delete_structure (&dest);
 
 	return attrs;
@@ -431,6 +363,7 @@ static CK_ATTRIBUTE *
 build_openssl_extensions (p11_parser *parser,
                           CK_ATTRIBUTE *cert,
                           CK_ATTRIBUTE *id,
+                          CK_ATTRIBUTE *public_key_info,
                           node_asn *aux,
                           const unsigned char *aux_der,
                           size_t aux_len)
@@ -483,7 +416,10 @@ build_openssl_extensions (p11_parser *parser,
 	 */
 
 	if (trust) {
-		attrs = stapled_eku_attrs (parser, id, P11_OID_EXTENDED_KEY_USAGE, CK_TRUE, trust);
+		attrs = stapled_eku_attrs (parser, id, public_key_info,
+		                           P11_OID_EXTENDED_KEY_USAGE_STR,
+		                           P11_OID_EXTENDED_KEY_USAGE,
+		                           true, trust);
 		return_val_if_fail (attrs != NULL, NULL);
 		sink_object (parser, attrs);
 	}
@@ -497,7 +433,10 @@ build_openssl_extensions (p11_parser *parser,
 	 */
 
 	if (reject && p11_dict_size (reject) > 0) {
-		attrs = stapled_eku_attrs (parser, id, P11_OID_OPENSSL_REJECT, CK_FALSE, reject);
+		attrs = stapled_eku_attrs (parser, id, public_key_info,
+		                           P11_OID_OPENSSL_REJECT_STR,
+		                           P11_OID_OPENSSL_REJECT,
+		                           false, reject);
 		return_val_if_fail (attrs != NULL, NULL);
 		sink_object (parser, attrs);
 	}
@@ -543,8 +482,10 @@ build_openssl_extensions (p11_parser *parser,
 	return_val_if_fail (ret == ASN1_SUCCESS || ret == ASN1_ELEMENT_NOT_FOUND, NULL);
 
 	if (ret == ASN1_SUCCESS) {
-		attrs = extension_attrs (parser, id, P11_OID_SUBJECT_KEY_IDENTIFIER, CK_FALSE,
-		                         aux_der + start, (end - start) + 1);
+		attrs = extension_attrs (parser, id, public_key_info,
+		                         P11_OID_SUBJECT_KEY_IDENTIFIER_STR,
+		                         P11_OID_SUBJECT_KEY_IDENTIFIER,
+		                         false, aux_der + start, (end - start) + 1);
 		return_val_if_fail (attrs != NULL, NULL);
 		sink_object (parser, attrs);
 	}
@@ -562,12 +503,15 @@ parse_openssl_trusted_certificate (p11_parser *parser,
 	CK_ATTRIBUTE *attrs;
 	CK_BYTE idv[ID_LENGTH];
 	CK_ATTRIBUTE id = { CKA_ID, idv, sizeof (idv) };
+	CK_ATTRIBUTE public_key_info = { CKA_PUBLIC_KEY_INFO };
 	CK_ATTRIBUTE *value;
 	char *label = NULL;
 	node_asn *cert;
-	node_asn *aux;
+	node_asn *aux = NULL;
 	ssize_t cert_len;
-	int len;
+	size_t len;
+	int start;
+	int end;
 	int ret;
 
 	/*
@@ -585,10 +529,14 @@ parse_openssl_trusted_certificate (p11_parser *parser,
 	if (cert == NULL)
 		return P11_PARSE_UNRECOGNIZED;
 
-	aux = p11_asn1_decode (parser->asn1_defs, "OPENSSL.CertAux", data + cert_len, length - cert_len, message);
-	if (aux == NULL) {
-		asn1_delete_structure (&cert);
-		return P11_PARSE_UNRECOGNIZED;
+	/* OpenSSL sometimes outputs TRUSTED CERTIFICATE format without the CertAux supplement */
+	if (cert_len < length) {
+		aux = p11_asn1_decode (parser->asn1_defs, "OPENSSL.CertAux", data + cert_len,
+		                       length - cert_len, message);
+		if (aux == NULL) {
+			asn1_delete_structure (&cert);
+			return P11_PARSE_UNRECOGNIZED;
+		}
 	}
 
 	/* The CKA_ID links related objects */
@@ -601,25 +549,31 @@ parse_openssl_trusted_certificate (p11_parser *parser,
 	/* Cache the parsed certificate ASN.1 for later use by the builder */
 	value = p11_attrs_find_valid (attrs, CKA_VALUE);
 	return_val_if_fail (value != NULL, P11_PARSE_FAILURE);
+
+	/* Pull out the subject public key info */
+	ret = asn1_der_decoding_startEnd (cert, data, cert_len,
+	                                  "tbsCertificate.subjectPublicKeyInfo", &start, &end);
+	return_val_if_fail (ret == ASN1_SUCCESS, P11_PARSE_FAILURE);
+
+	public_key_info.pValue = (char *)data + start;
+	public_key_info.ulValueLen = (end - start) + 1;
+
 	p11_asn1_cache_take (parser->asn1_cache, cert, "PKIX1.Certificate",
 	                     value->pValue, value->ulValueLen);
 
 	/* Pull the label out of the CertAux */
-	len = 0;
-	ret = asn1_read_value (aux, "alias", NULL, &len);
-	if (ret != ASN1_ELEMENT_NOT_FOUND) {
-		return_val_if_fail (ret == ASN1_MEM_ERROR, P11_PARSE_FAILURE);
-		label = calloc (len + 1, 1);
-		return_val_if_fail (label != NULL, P11_PARSE_FAILURE);
-		ret = asn1_read_value (aux, "alias", label, &len);
-		return_val_if_fail (ret == ASN1_SUCCESS, P11_PARSE_FAILURE);
-		attrs = p11_attrs_take (attrs, CKA_LABEL, label, strlen (label));
+	if (aux) {
+		len = 0;
+		label = p11_asn1_read (aux, "alias", &len);
+		if (label != NULL) {
+			attrs = p11_attrs_take (attrs, CKA_LABEL, label, strlen (label));
+			return_val_if_fail (attrs != NULL, P11_PARSE_FAILURE);
+		}
+
+		attrs = build_openssl_extensions (parser, attrs, &id, &public_key_info, aux,
+		                                  data + cert_len, length - cert_len);
 		return_val_if_fail (attrs != NULL, P11_PARSE_FAILURE);
 	}
-
-	attrs = build_openssl_extensions (parser, attrs, &id, aux,
-	                                  data + cert_len, length - cert_len);
-	return_val_if_fail (attrs != NULL, P11_PARSE_FAILURE);
 
 	sink_object (parser, attrs);
 	asn1_delete_structure (&aux);
@@ -636,10 +590,8 @@ on_pem_block (const char *type,
 	p11_parser *parser = user_data;
 	int ret;
 
-	p11_index_batch (parser->index);
-
 	if (strcmp (type, "CERTIFICATE") == 0) {
-		ret = parse_der_x509_certificate (parser, contents, length);
+		ret = p11_parser_format_x509 (parser, contents, length);
 
 	} else if (strcmp (type, "TRUSTED CERTIFICATE") == 0) {
 		ret = parse_openssl_trusted_certificate (parser, contents, length);
@@ -649,16 +601,14 @@ on_pem_block (const char *type,
 		ret = P11_PARSE_SUCCESS;
 	}
 
-	p11_index_finish (parser->index);
-
 	if (ret != P11_PARSE_SUCCESS)
 		p11_message ("Couldn't parse PEM block of type %s", type);
 }
 
-static int
-parse_pem_certificates (p11_parser *parser,
-                        const unsigned char *data,
-                        size_t length)
+int
+p11_parser_format_pem (p11_parser *parser,
+                       const unsigned char *data,
+                       size_t length)
 {
 	int num;
 
@@ -670,14 +620,18 @@ parse_pem_certificates (p11_parser *parser,
 	return P11_PARSE_SUCCESS;
 }
 
-static int
-parse_p11_kit_persist (p11_parser *parser,
-                       const unsigned char *data,
-                       size_t length)
+int
+p11_parser_format_persist (p11_parser *parser,
+                           const unsigned char *data,
+                           size_t length)
 {
+	CK_BBOOL modifiablev = CK_TRUE;
+	CK_ATTRIBUTE *attrs;
 	p11_array *objects;
 	bool ret;
 	int i;
+
+	CK_ATTRIBUTE modifiable = { CKA_MODIFIABLE, &modifiablev, sizeof (modifiablev) };
 
 	if (!p11_persist_magic (data, length))
 		return P11_PARSE_UNRECOGNIZED;
@@ -692,33 +646,32 @@ parse_p11_kit_persist (p11_parser *parser,
 
 	ret = p11_persist_read (parser->persist, parser->basename, data, length, objects);
 	if (ret) {
-		for (i = 0; i < objects->num; i++)
-			sink_object (parser, objects->elem[i]);
+		for (i = 0; i < objects->num; i++) {
+			attrs = p11_attrs_build (objects->elem[i], &modifiable, NULL);
+			sink_object (parser, attrs);
+		}
 	}
 
 	p11_array_free (objects);
 	return ret ? P11_PARSE_SUCCESS : P11_PARSE_FAILURE;
 }
 
-static parser_func all_parsers[] = {
-	parse_p11_kit_persist,
-	parse_pem_certificates,
-	parse_der_x509_certificate,
-	NULL,
-};
-
 p11_parser *
-p11_parser_new (p11_index *index,
-                p11_asn1_cache *asn1_cache)
+p11_parser_new (p11_asn1_cache *asn1_cache)
 {
 	p11_parser parser = { 0, };
 
-	return_val_if_fail (index != NULL, NULL);
-	return_val_if_fail (asn1_cache != NULL, NULL);
+	if (asn1_cache == NULL) {
+		parser.asn1_owned = true;
+		parser.asn1_defs = p11_asn1_defs_load ();
+	} else {
+		parser.asn1_defs = p11_asn1_cache_defs (asn1_cache);
+		parser.asn1_cache = asn1_cache;
+		parser.asn1_owned = false;
+	}
 
-	parser.index = index;
-	parser.asn1_defs = p11_asn1_cache_defs (asn1_cache);
-	parser.asn1_cache = asn1_cache;
+	parser.parsed = p11_array_new (p11_attrs_free);
+	return_val_if_fail (parser.parsed != NULL, NULL);
 
 	return memdup (&parser, sizeof (parser));
 }
@@ -728,7 +681,43 @@ p11_parser_free (p11_parser *parser)
 {
 	return_if_fail (parser != NULL);
 	p11_persist_free (parser->persist);
+	p11_array_free (parser->parsed);
+	p11_array_free (parser->formats);
+	if (parser->asn1_owned)
+		p11_dict_free (parser->asn1_defs);
 	free (parser);
+}
+
+p11_array *
+p11_parser_parsed (p11_parser *parser)
+{
+	return_val_if_fail (parser != NULL, NULL);
+	return parser->parsed;
+}
+
+void
+p11_parser_formats (p11_parser *parser,
+                    ...)
+{
+	p11_array *formats;
+	parser_func func;
+	va_list va;
+
+	formats = p11_array_new (NULL);
+	return_if_fail (formats != NULL);
+
+	va_start (va, parser);
+	for (;;) {
+		func = va_arg (va, parser_func);
+		if (func == NULL)
+			break;
+		if (!p11_array_push (formats, func))
+			return_if_reached ();
+	}
+	va_end (va);
+
+	p11_array_free (parser->formats);
+	parser->formats = formats;
 }
 
 int
@@ -743,19 +732,16 @@ p11_parse_memory (p11_parser *parser,
 	int i;
 
 	return_val_if_fail (parser != NULL, P11_PARSE_FAILURE);
+	return_val_if_fail (filename != NULL, P11_PARSE_FAILURE);
+	return_val_if_fail (parser->formats != NULL, P11_PARSE_FAILURE);
 
+	p11_array_clear (parser->parsed);
 	base = p11_path_base (filename);
 	parser->basename = base;
 	parser->flags = flags;
 
-	for (i = 0; all_parsers[i] != NULL; i++) {
-		p11_index_batch (parser->index);
-		ret = (all_parsers[i]) (parser, data, length);
-		p11_index_finish (parser->index);
-
-		if (ret != P11_PARSE_UNRECOGNIZED)
-			break;
-	}
+	for (i = 0; ret == P11_PARSE_UNRECOGNIZED && i < parser->formats->num; i++)
+		ret = ((parser_func)parser->formats->elem[i]) (parser, data, length);
 
 	p11_asn1_cache_flush (parser->asn1_cache);
 
@@ -769,6 +755,7 @@ p11_parse_memory (p11_parser *parser,
 int
 p11_parse_file (p11_parser *parser,
                 const char *filename,
+                struct stat *sb,
                 int flags)
 {
 	p11_mmap *map;
@@ -779,7 +766,7 @@ p11_parse_file (p11_parser *parser,
 	return_val_if_fail (parser != NULL, P11_PARSE_FAILURE);
 	return_val_if_fail (filename != NULL, P11_PARSE_FAILURE);
 
-	map = p11_mmap_open (filename, &data, &size);
+	map = p11_mmap_open (filename, sb, &data, &size);
 	if (map == NULL) {
 		p11_message_err (errno, "couldn't open and map file: %s", filename);
 		return P11_PARSE_FAILURE;

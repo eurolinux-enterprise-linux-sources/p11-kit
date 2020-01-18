@@ -33,7 +33,8 @@
  */
 
 #include "config.h"
-#include "CuTest.h"
+#include "test.h"
+#include "test-trust.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -47,28 +48,28 @@
 #include "oid.h"
 #include "parser.h"
 #include "pkcs11x.h"
-#include "test-data.h"
 
 struct {
 	p11_parser *parser;
+	p11_array *parsed;
 	p11_asn1_cache *cache;
-	p11_index *index;
 } test;
 
 static void
-setup (CuTest *cu)
+setup (void *unused)
 {
-	test.index = p11_index_new (NULL, NULL, NULL);
 	test.cache = p11_asn1_cache_new ();
-	test.parser = p11_parser_new (test.index, test.cache);
-	CuAssertPtrNotNull (cu, test.parser);
+	test.parser = p11_parser_new (test.cache);
+	assert_ptr_not_null (test.parser);
+
+	test.parsed = p11_parser_parsed (test.parser);
+	assert_ptr_not_null (test.parsed);
 }
 
 static void
-teardown (CuTest *cu)
+teardown (void *unused)
 {
 	p11_parser_free (test.parser);
-	p11_index_free (test.index);
 	p11_asn1_cache_free (test.cache);
 	memset (&test, 0, sizeof (test));
 }
@@ -85,16 +86,23 @@ static CK_ATTRIBUTE certificate_match[] = {
 };
 
 static CK_ATTRIBUTE *
-parsed_attrs (CK_ATTRIBUTE *match)
+parsed_attrs (CK_ATTRIBUTE *match,
+              int length)
 {
-	CK_OBJECT_HANDLE handle;
-	handle = p11_index_find (test.index, certificate_match, -1);
-	return p11_index_lookup (test.index, handle);
+	int i;
 
+	if (length < 0)
+		length = p11_attrs_count (match);
+	for (i = 0; i < test.parsed->num; i++) {
+		if (p11_attrs_matchn (test.parsed->elem[i], match, length))
+			return test.parsed->elem[i];
+	}
+
+	return NULL;
 }
 
 static void
-test_parse_der_certificate (CuTest *cu)
+test_parse_der_certificate (void)
 {
 	CK_ATTRIBUTE *cert;
 	int ret;
@@ -109,23 +117,20 @@ test_parse_der_certificate (CuTest *cu)
 		{ CKA_INVALID },
 	};
 
-	setup (cu);
-
-	ret = p11_parse_file (test.parser, SRCDIR "/files/cacert3.der",
+	p11_parser_formats (test.parser, p11_parser_format_x509, NULL);
+	ret = p11_parse_file (test.parser, SRCDIR "/files/cacert3.der", NULL,
 	                      P11_PARSE_FLAG_NONE);
-	CuAssertIntEquals (cu, P11_PARSE_SUCCESS, ret);
+	assert_num_eq (P11_PARSE_SUCCESS, ret);
 
 	/* Should have gotten certificate */
-	CuAssertIntEquals (cu, 1, p11_index_size (test.index));
+	assert_num_eq (1, test.parsed->num);
 
-	cert = parsed_attrs (certificate_match);
-	test_check_attrs (cu, expected, cert);
-
-	teardown (cu);
+	cert = parsed_attrs (certificate_match, -1);
+	test_check_attrs (expected, cert);
 }
 
 static void
-test_parse_pem_certificate (CuTest *cu)
+test_parse_pem_certificate (void)
 {
 	CK_ATTRIBUTE *cert;
 	int ret;
@@ -140,23 +145,20 @@ test_parse_pem_certificate (CuTest *cu)
 		{ CKA_INVALID },
 	};
 
-	setup (cu);
-
-	ret = p11_parse_file (test.parser, SRCDIR "/files/cacert3.pem",
+	p11_parser_formats (test.parser, p11_parser_format_pem, NULL);
+	ret = p11_parse_file (test.parser, SRCDIR "/files/cacert3.pem", NULL,
 	                      P11_PARSE_FLAG_NONE);
-	CuAssertIntEquals (cu, P11_PARSE_SUCCESS, ret);
+	assert_num_eq (P11_PARSE_SUCCESS, ret);
 
 	/* Should have gotten certificate  */
-	CuAssertIntEquals (cu, 1, p11_index_size (test.index));
+	assert_num_eq (1, test.parsed->num);
 
-	cert = parsed_attrs (certificate_match);
-	test_check_attrs (cu, expected, cert);
-
-	teardown (cu);
+	cert = parsed_attrs (certificate_match, -1);
+	test_check_attrs (expected, cert);
 }
 
 static void
-test_parse_p11_kit_persist (CuTest *cu)
+test_parse_p11_kit_persist (void)
 {
 	CK_ATTRIBUTE *cert;
 	int ret;
@@ -165,29 +167,25 @@ test_parse_p11_kit_persist (CuTest *cu)
 		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
 		{ CKA_CLASS, &certificate, sizeof (certificate) },
 		{ CKA_VALUE, (void *)verisign_v1_ca, sizeof (verisign_v1_ca) },
-		{ CKA_MODIFIABLE, &falsev, sizeof (falsev) },
 		{ CKA_TRUSTED, &truev, sizeof (truev) },
 		{ CKA_X_DISTRUSTED, &falsev, sizeof (falsev) },
 		{ CKA_INVALID },
 	};
 
-	setup (cu);
-
-	ret = p11_parse_file (test.parser, SRCDIR "/input/verisign-v1.p11-kit",
+	p11_parser_formats (test.parser, p11_parser_format_persist, NULL);
+	ret = p11_parse_file (test.parser, SRCDIR "/input/verisign-v1.p11-kit", NULL,
 	                      P11_PARSE_FLAG_NONE);
-	CuAssertIntEquals (cu, P11_PARSE_SUCCESS, ret);
+	assert_num_eq (P11_PARSE_SUCCESS, ret);
 
 	/* Should have gotten certificate  */
-	CuAssertIntEquals (cu, 1, p11_index_size (test.index));
+	assert_num_eq (1, test.parsed->num);
 
-	cert = parsed_attrs (certificate_match);
-	test_check_attrs (cu, expected, cert);
-
-	teardown (cu);
+	cert = parsed_attrs (certificate_match, -1);
+	test_check_attrs (expected, cert);
 }
 
 static void
-test_parse_openssl_trusted (CuTest *cu)
+test_parse_openssl_trusted (void)
 {
 	CK_ATTRIBUTE cacert3[] = {
 		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
@@ -202,16 +200,16 @@ test_parse_openssl_trusted (CuTest *cu)
 	CK_ATTRIBUTE eku_extension[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension), },
 		{ CKA_OBJECT_ID, (void *)P11_OID_EXTENDED_KEY_USAGE, sizeof (P11_OID_EXTENDED_KEY_USAGE) },
-		{ CKA_X_CRITICAL, &truev, sizeof (truev) },
-		{ CKA_VALUE, "\x30\x0a\x06\x08\x2b\x06\x01\x05\x05\x07\x03\x01", 12 },
+		{ CKA_PUBLIC_KEY_INFO, (void *)test_cacert3_ca_public_key, sizeof (test_cacert3_ca_public_key) },
+		{ CKA_VALUE, "\x30\x16\x06\x03\x55\x1d\x25\x01\x01\xff\x04\x0c\x30\x0a\x06\x08\x2b\x06\x01\x05\x05\x07\x03\x01", 24 },
 		{ CKA_INVALID },
 	};
 
 	CK_ATTRIBUTE reject_extension[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension), },
 		{ CKA_OBJECT_ID, (void *)P11_OID_OPENSSL_REJECT, sizeof (P11_OID_OPENSSL_REJECT) },
-		{ CKA_X_CRITICAL, &falsev, sizeof (falsev) },
-		{ CKA_VALUE, "\x30\x0a\x06\x08\x2b\x06\x01\x05\x05\x07\x03\x04", 12 },
+		{ CKA_PUBLIC_KEY_INFO, (void *)test_cacert3_ca_public_key, sizeof (test_cacert3_ca_public_key) },
+		{ CKA_VALUE, "\x30\x1a\x06\x0a\x2b\x06\x01\x04\x01\x99\x77\x06\x0a\x01\x04\x0c\x30\x0a\x06\x08\x2b\x06\x01\x05\x05\x07\x03\x04", 28 },
 		{ CKA_INVALID },
 	};
 
@@ -224,45 +222,52 @@ test_parse_openssl_trusted (CuTest *cu)
 
 	CK_ATTRIBUTE *cert;
 	CK_ATTRIBUTE *object;
-	CK_OBJECT_HANDLE handle;
 	int ret;
 	int i;
 
-	setup (cu);
-
-	ret = p11_parse_file (test.parser, SRCDIR "/files/cacert3-trusted.pem",
+	p11_parser_formats (test.parser, p11_parser_format_pem, NULL);
+	ret = p11_parse_file (test.parser, SRCDIR "/files/cacert3-trusted.pem", NULL,
 	                      P11_PARSE_FLAG_ANCHOR);
-	CuAssertIntEquals (cu, P11_PARSE_SUCCESS, ret);
+	assert_num_eq (P11_PARSE_SUCCESS, ret);
 
 	/*
 	 * Should have gotten:
 	 * - 1 certificate
 	 * - 2 stapled extensions
 	 */
-	CuAssertIntEquals (cu, 3, p11_index_size (test.index));
+	assert_num_eq (3, test.parsed->num);
 
 	/* The certificate */
-	cert = parsed_attrs (certificate_match);
-	test_check_attrs (cu, expected[0], cert);
+	cert = parsed_attrs (certificate_match, -1);
+	test_check_attrs (expected[0], cert);
 
 	/* The other objects */
 	for (i = 1; expected[i]; i++) {
-		handle = p11_index_find (test.index, expected[i], 2);
-		CuAssertTrue (cu, handle != 0);
+		object = parsed_attrs (expected[i], 2);
+		assert_ptr_not_null (object);
 
-		object = p11_index_lookup (test.index, handle);
-		CuAssertPtrNotNull (cu, object);
-
-		test_check_attrs (cu, expected[i], object);
-		test_check_id (cu, cert, object);
+		test_check_attrs (expected[i], object);
+		test_check_id (cert, object);
 	}
-
-	teardown (cu);
 }
 
 static void
-test_parse_openssl_distrusted (CuTest *cu)
+test_parse_openssl_distrusted (void)
 {
+	static const char distrust_public_key[] = {
+		0x30, 0x81, 0x9f, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+		0x05, 0x00, 0x03, 0x81, 0x8d, 0x00, 0x30, 0x81, 0x89, 0x02, 0x81, 0x81, 0x00, 0xdf, 0xc7, 0x0d,
+		0x61, 0xa2, 0x2f, 0xc0, 0x5a, 0xad, 0x45, 0x83, 0x22, 0x33, 0x42, 0xea, 0xec, 0x42, 0x5e, 0xa6,
+		0x0d, 0x42, 0x4c, 0x1c, 0x9a, 0x12, 0x0b, 0x5f, 0xe7, 0x25, 0xf9, 0x8b, 0x83, 0x0c, 0x0a, 0xc5,
+		0x2f, 0x5a, 0x58, 0x56, 0xb8, 0xad, 0x87, 0x6d, 0xbc, 0x80, 0x5d, 0xdd, 0x49, 0x45, 0x39, 0x5f,
+		0xb9, 0x08, 0x3a, 0x63, 0xe4, 0x92, 0x33, 0x61, 0x79, 0x19, 0x1b, 0x9d, 0xab, 0x3a, 0xd5, 0x7f,
+		0xa7, 0x8b, 0x7f, 0x8a, 0x5a, 0xf6, 0xd7, 0xde, 0xaf, 0xa1, 0xe5, 0x53, 0x31, 0x29, 0x7d, 0x9c,
+		0x03, 0x55, 0x3e, 0x47, 0x78, 0xcb, 0xb9, 0x7a, 0x98, 0x8c, 0x5f, 0x8d, 0xda, 0x09, 0x0f, 0xc8,
+		0xfb, 0xf1, 0x7a, 0x80, 0xee, 0x12, 0x77, 0x0a, 0x00, 0x8b, 0x70, 0xfa, 0x62, 0xbf, 0xaf, 0xee,
+		0x0b, 0x58, 0x16, 0xf9, 0x9c, 0x5c, 0xde, 0x93, 0xb8, 0x4f, 0xdf, 0x4d, 0x7b, 0x02, 0x03, 0x01,
+		0x00, 0x01,
+	};
+
 	CK_ATTRIBUTE distrust_cert[] = {
 		{ CKA_CLASS, &certificate, sizeof (certificate), },
 		{ CKA_MODIFIABLE, &falsev, sizeof (falsev) },
@@ -275,16 +280,16 @@ test_parse_openssl_distrusted (CuTest *cu)
 	CK_ATTRIBUTE eku_extension[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension), },
 		{ CKA_OBJECT_ID, (void *)P11_OID_EXTENDED_KEY_USAGE, sizeof (P11_OID_EXTENDED_KEY_USAGE) },
-		{ CKA_X_CRITICAL, &truev, sizeof (truev) },
-		{ CKA_VALUE, "\x30\x0c\x06\x0a\x2b\x06\x01\x04\x01\x99\x77\x06\x0a\x10", 14 },
+		{ CKA_PUBLIC_KEY_INFO, (void *)distrust_public_key, sizeof (distrust_public_key) },
+		{ CKA_VALUE, "\x30\x18\x06\x03\x55\x1d\x25\x01\x01\xff\x04\x0e\x30\x0c\x06\x0a\x2b\x06\x01\x04\x01\x99\x77\x06\x0a\x10", 26 },
 		{ CKA_INVALID },
 	};
 
 	CK_ATTRIBUTE reject_extension[] = {
 		{ CKA_CLASS, &certificate_extension, sizeof (certificate_extension), },
 		{ CKA_OBJECT_ID, (void *)P11_OID_OPENSSL_REJECT, sizeof (P11_OID_OPENSSL_REJECT) },
-		{ CKA_X_CRITICAL, &falsev, sizeof (falsev) },
-		{ CKA_VALUE, "\x30\x0a\x06\x08\x2b\x06\x01\x05\x05\x07\x03\x02", 12 },
+		{ CKA_PUBLIC_KEY_INFO, (void *)distrust_public_key, sizeof (distrust_public_key) },
+		{ CKA_VALUE, "\x30\x1a\x06\x0a\x2b\x06\x01\x04\x01\x99\x77\x06\x0a\x01\x04\x0c\x30\x0a\x06\x08\x2b\x06\x01\x05\x05\x07\x03\x02", 28 },
 		{ CKA_INVALID },
 	};
 
@@ -297,46 +302,143 @@ test_parse_openssl_distrusted (CuTest *cu)
 
 	CK_ATTRIBUTE *cert;
 	CK_ATTRIBUTE *object;
-	CK_OBJECT_HANDLE handle;
 	int ret;
 	int i;
-
-	setup (cu);
 
 	/*
 	 * OpenSSL style is to litter the blacklist in with the anchors,
 	 * so we parse this as an anchor, but expect it to be blacklisted
 	 */
-	ret = p11_parse_file (test.parser, SRCDIR "/files/distrusted.pem",
+	p11_parser_formats (test.parser, p11_parser_format_pem, NULL);
+	ret = p11_parse_file (test.parser, SRCDIR "/files/distrusted.pem", NULL,
 	                      P11_PARSE_FLAG_ANCHOR);
-	CuAssertIntEquals (cu, P11_PARSE_SUCCESS, ret);
+	assert_num_eq (P11_PARSE_SUCCESS, ret);
 
 	/*
 	 * Should have gotten:
 	 * - 1 certificate
 	 * - 2 stapled extensions
 	 */
-	CuAssertIntEquals (cu, 3, p11_index_size (test.index));
-	cert = parsed_attrs (certificate_match);
-	test_check_attrs (cu, expected[0], cert);
+	assert_num_eq (3, test.parsed->num);
+	cert = parsed_attrs (certificate_match, -1);
+	test_check_attrs (expected[0], cert);
 
 	/* The other objects */
 	for (i = 1; expected[i]; i++) {
-		handle = p11_index_find (test.index, expected[i], 2);
-		CuAssertTrue (cu, handle != 0);
+		object = parsed_attrs (expected[i], 2);
+		assert_ptr_not_null (object);
 
-		object = p11_index_lookup (test.index, handle);
-		CuAssertPtrNotNull (cu, object);
-
-		test_check_attrs (cu, expected[i], object);
-		test_check_id (cu, cert, object);
+		test_check_attrs (expected[i], object);
+		test_check_id (cert, object);
 	}
-
-	teardown (cu);
 }
 
 static void
-test_parse_anchor (CuTest *cu)
+test_openssl_trusted_no_trust (void)
+{
+	CK_ATTRIBUTE *cert;
+	int ret;
+
+	char expected_value[] = {
+		0x30, 0x82, 0x04, 0x99, 0x30, 0x82, 0x03, 0x81, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x10, 0x5d,
+		0x20, 0x61, 0x8e, 0x8c, 0x0e, 0xb9, 0x34, 0x40, 0x93, 0xb9, 0xb1, 0xd8, 0x63, 0x95, 0xb6, 0x30,
+		0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x05, 0x05, 0x00, 0x30, 0x6f,
+		0x31, 0x0b, 0x30, 0x09, 0x06, 0x03, 0x55, 0x04, 0x06, 0x13, 0x02, 0x53, 0x45, 0x31, 0x14, 0x30,
+		0x12, 0x06, 0x03, 0x55, 0x04, 0x0a, 0x13, 0x0b, 0x41, 0x64, 0x64, 0x54, 0x72, 0x75, 0x73, 0x74,
+		0x20, 0x41, 0x42, 0x31, 0x26, 0x30, 0x24, 0x06, 0x03, 0x55, 0x04, 0x0b, 0x13, 0x1d, 0x41, 0x64,
+		0x64, 0x54, 0x72, 0x75, 0x73, 0x74, 0x20, 0x45, 0x78, 0x74, 0x65, 0x72, 0x6e, 0x61, 0x6c, 0x20,
+		0x54, 0x54, 0x50, 0x20, 0x4e, 0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x31, 0x22, 0x30, 0x20, 0x06,
+		0x03, 0x55, 0x04, 0x03, 0x13, 0x19, 0x41, 0x64, 0x64, 0x54, 0x72, 0x75, 0x73, 0x74, 0x20, 0x45,
+		0x78, 0x74, 0x65, 0x72, 0x6e, 0x61, 0x6c, 0x20, 0x43, 0x41, 0x20, 0x52, 0x6f, 0x6f, 0x74, 0x30,
+		0x1e, 0x17, 0x0d, 0x31, 0x34, 0x30, 0x38, 0x30, 0x35, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x5a,
+		0x17, 0x0d, 0x31, 0x35, 0x31, 0x31, 0x30, 0x31, 0x32, 0x33, 0x35, 0x39, 0x35, 0x39, 0x5a, 0x30,
+		0x7f, 0x31, 0x0b, 0x30, 0x09, 0x06, 0x03, 0x55, 0x04, 0x06, 0x13, 0x02, 0x55, 0x53, 0x31, 0x0b,
+		0x30, 0x09, 0x06, 0x03, 0x55, 0x04, 0x08, 0x13, 0x02, 0x55, 0x54, 0x31, 0x17, 0x30, 0x15, 0x06,
+		0x03, 0x55, 0x04, 0x07, 0x13, 0x0e, 0x53, 0x61, 0x6c, 0x74, 0x20, 0x4c, 0x61, 0x6b, 0x65, 0x20,
+		0x43, 0x69, 0x74, 0x79, 0x31, 0x1e, 0x30, 0x1c, 0x06, 0x03, 0x55, 0x04, 0x0a, 0x13, 0x15, 0x54,
+		0x68, 0x65, 0x20, 0x55, 0x53, 0x45, 0x52, 0x54, 0x52, 0x55, 0x53, 0x54, 0x20, 0x4e, 0x65, 0x74,
+		0x77, 0x6f, 0x72, 0x6b, 0x31, 0x2a, 0x30, 0x28, 0x06, 0x03, 0x55, 0x04, 0x03, 0x13, 0x21, 0x55,
+		0x53, 0x45, 0x52, 0x54, 0x72, 0x75, 0x73, 0x74, 0x20, 0x4c, 0x65, 0x67, 0x61, 0x63, 0x79, 0x20,
+		0x53, 0x65, 0x63, 0x75, 0x72, 0x65, 0x20, 0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x20, 0x43, 0x41,
+		0x30, 0x82, 0x01, 0x22, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01,
+		0x01, 0x05, 0x00, 0x03, 0x82, 0x01, 0x0f, 0x00, 0x30, 0x82, 0x01, 0x0a, 0x02, 0x82, 0x01, 0x01,
+		0x00, 0xd9, 0x4d, 0x20, 0x3a, 0xe6, 0x29, 0x30, 0x86, 0xf2, 0xe9, 0x86, 0x89, 0x76, 0x34, 0x4e,
+		0x68, 0x1f, 0x96, 0x44, 0xf7, 0xd1, 0xf9, 0xd6, 0x82, 0x4e, 0xa6, 0x38, 0x9e, 0xee, 0xcb, 0x5b,
+		0xe1, 0x8e, 0x2e, 0xbd, 0xf2, 0x57, 0x80, 0xfd, 0xc9, 0x3f, 0xfc, 0x90, 0x73, 0x44, 0xbc, 0x8f,
+		0xbb, 0x57, 0x5b, 0xe5, 0x2d, 0x1f, 0x14, 0x30, 0x75, 0x36, 0xf5, 0x7f, 0xbc, 0xcf, 0x56, 0xf4,
+		0x7f, 0x81, 0xff, 0xae, 0x91, 0xcd, 0xd8, 0xd2, 0x6a, 0xcb, 0x97, 0xf9, 0xf7, 0xcd, 0x90, 0x6a,
+		0x45, 0x2d, 0xc4, 0xbb, 0xa4, 0x85, 0x13, 0x68, 0x57, 0x5f, 0xef, 0x29, 0xba, 0x2a, 0xca, 0xea,
+		0xf5, 0xcc, 0xa4, 0x04, 0x9b, 0x63, 0xcd, 0x00, 0xeb, 0xfd, 0xed, 0x8d, 0xdd, 0x23, 0xc6, 0x7b,
+		0x1e, 0x57, 0x1d, 0x36, 0x7f, 0x1f, 0x08, 0x9a, 0x0d, 0x61, 0xdb, 0x5a, 0x6c, 0x71, 0x02, 0x53,
+		0x28, 0xc2, 0xfa, 0x8d, 0xfd, 0xab, 0xbb, 0xb3, 0xf1, 0x8d, 0x74, 0x4b, 0xdf, 0xbd, 0xbd, 0xcc,
+		0x06, 0x93, 0x63, 0x09, 0x95, 0xc2, 0x10, 0x7a, 0x9d, 0x25, 0x90, 0x32, 0x9d, 0x01, 0xc2, 0x39,
+		0x53, 0xb0, 0xe0, 0x15, 0x6b, 0xc7, 0xd7, 0x74, 0xe5, 0xa4, 0x22, 0x9b, 0xe4, 0x94, 0xff, 0x84,
+		0x91, 0xfb, 0x2d, 0xb3, 0x19, 0x43, 0x2d, 0x93, 0x0f, 0x9c, 0x12, 0x09, 0xe4, 0x67, 0xb9, 0x27,
+		0x7a, 0x32, 0xad, 0x7a, 0x2a, 0xcc, 0x41, 0x58, 0xc0, 0x6e, 0x59, 0x5f, 0xee, 0x38, 0x2b, 0x17,
+		0x22, 0x9c, 0x89, 0xfa, 0x6e, 0xe7, 0xe5, 0x57, 0x35, 0xf4, 0x5a, 0xed, 0x92, 0x95, 0x93, 0x2d,
+		0xf9, 0xcc, 0x24, 0x3f, 0xa5, 0x1c, 0x3d, 0x27, 0xbd, 0x22, 0x03, 0x73, 0xcc, 0xf5, 0xca, 0xf3,
+		0xa9, 0xf4, 0xdc, 0xfe, 0xcf, 0xe9, 0xd0, 0x5c, 0xd0, 0x0f, 0xab, 0x87, 0xfc, 0x83, 0xfd, 0xc8,
+		0xa9, 0x02, 0x03, 0x01, 0x00, 0x01, 0xa3, 0x82, 0x01, 0x1f, 0x30, 0x82, 0x01, 0x1b, 0x30, 0x1f,
+		0x06, 0x03, 0x55, 0x1d, 0x23, 0x04, 0x18, 0x30, 0x16, 0x80, 0x14, 0xad, 0xbd, 0x98, 0x7a, 0x34,
+		0xb4, 0x26, 0xf7, 0xfa, 0xc4, 0x26, 0x54, 0xef, 0x03, 0xbd, 0xe0, 0x24, 0xcb, 0x54, 0x1a, 0x30,
+		0x1d, 0x06, 0x03, 0x55, 0x1d, 0x0e, 0x04, 0x16, 0x04, 0x14, 0xaf, 0xa4, 0x40, 0xaf, 0x9f, 0x16,
+		0xfe, 0xab, 0x31, 0xfd, 0xfb, 0xd5, 0x97, 0x8b, 0xf5, 0x91, 0xa3, 0x24, 0x86, 0x16, 0x30, 0x0e,
+		0x06, 0x03, 0x55, 0x1d, 0x0f, 0x01, 0x01, 0xff, 0x04, 0x04, 0x03, 0x02, 0x01, 0x86, 0x30, 0x12,
+		0x06, 0x03, 0x55, 0x1d, 0x13, 0x01, 0x01, 0xff, 0x04, 0x08, 0x30, 0x06, 0x01, 0x01, 0xff, 0x02,
+		0x01, 0x00, 0x30, 0x1d, 0x06, 0x03, 0x55, 0x1d, 0x25, 0x04, 0x16, 0x30, 0x14, 0x06, 0x08, 0x2b,
+		0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01, 0x06, 0x08, 0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03,
+		0x02, 0x30, 0x19, 0x06, 0x03, 0x55, 0x1d, 0x20, 0x04, 0x12, 0x30, 0x10, 0x30, 0x0e, 0x06, 0x0c,
+		0x2b, 0x06, 0x01, 0x04, 0x01, 0xb2, 0x31, 0x01, 0x02, 0x01, 0x03, 0x04, 0x30, 0x44, 0x06, 0x03,
+		0x55, 0x1d, 0x1f, 0x04, 0x3d, 0x30, 0x3b, 0x30, 0x39, 0xa0, 0x37, 0xa0, 0x35, 0x86, 0x33, 0x68,
+		0x74, 0x74, 0x70, 0x3a, 0x2f, 0x2f, 0x63, 0x72, 0x6c, 0x2e, 0x75, 0x73, 0x65, 0x72, 0x74, 0x72,
+		0x75, 0x73, 0x74, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x41, 0x64, 0x64, 0x54, 0x72, 0x75, 0x73, 0x74,
+		0x45, 0x78, 0x74, 0x65, 0x72, 0x6e, 0x61, 0x6c, 0x43, 0x41, 0x52, 0x6f, 0x6f, 0x74, 0x2e, 0x63,
+		0x72, 0x6c, 0x30, 0x35, 0x06, 0x08, 0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x01, 0x01, 0x04, 0x29,
+		0x30, 0x27, 0x30, 0x25, 0x06, 0x08, 0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x30, 0x01, 0x86, 0x19,
+		0x68, 0x74, 0x74, 0x70, 0x3a, 0x2f, 0x2f, 0x6f, 0x63, 0x73, 0x70, 0x2e, 0x75, 0x73, 0x65, 0x72,
+		0x74, 0x72, 0x75, 0x73, 0x74, 0x2e, 0x63, 0x6f, 0x6d, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48,
+		0x86, 0xf7, 0x0d, 0x01, 0x01, 0x05, 0x05, 0x00, 0x03, 0x82, 0x01, 0x01, 0x00, 0x84, 0xae, 0x2d,
+		0x68, 0x38, 0x11, 0x6c, 0x83, 0x51, 0x62, 0xc0, 0x91, 0xc2, 0x98, 0xbc, 0xc6, 0x3b, 0xfa, 0xa5,
+		0xc5, 0xbd, 0x3b, 0x09, 0xe6, 0x6e, 0x60, 0x6f, 0x30, 0x03, 0x86, 0x22, 0x1a, 0xb2, 0x8b, 0xf3,
+		0xc6, 0xce, 0x1e, 0xbb, 0x1b, 0x79, 0xe0, 0x16, 0x14, 0x4d, 0xd2, 0x9a, 0x05, 0x4b, 0xff, 0x8f,
+		0xec, 0xf0, 0x28, 0x29, 0xea, 0x2a, 0x04, 0x1d, 0x3d, 0xaf, 0x11, 0x12, 0xd5, 0x49, 0x98, 0x50,
+		0x42, 0x9f, 0x61, 0x66, 0x3a, 0xb6, 0x40, 0x99, 0x04, 0x0c, 0x6b, 0x10, 0x32, 0xe9, 0xf7, 0xcf,
+		0x86, 0x58, 0x4f, 0x2d, 0xcd, 0xd3, 0xac, 0x7e, 0xe8, 0x5b, 0x6a, 0x83, 0x7c, 0x0d, 0xa0, 0x9c,
+		0x5c, 0x50, 0x36, 0x75, 0x0d, 0x6d, 0x7e, 0x42, 0xb7, 0xdf, 0xa6, 0xdc, 0x90, 0x5c, 0x6f, 0x23,
+		0x4e, 0x97, 0x1d, 0xf3, 0x22, 0x75, 0xbf, 0x03, 0x35, 0xe6, 0x5d, 0x7f, 0xc7, 0xf9, 0x9b, 0x2c,
+		0x87, 0xf6, 0x8e, 0xd6, 0x25, 0x96, 0x59, 0x9d, 0xcf, 0xea, 0x10, 0x1e, 0xef, 0x6e, 0xea, 0x5a,
+		0x9b, 0x77, 0x18, 0x34, 0xcc, 0x81, 0x77, 0xaf, 0x9a, 0x87, 0xc2, 0x0a, 0xe5, 0xe5, 0x9e, 0x13,
+		0x95, 0x53, 0xbd, 0xbd, 0x49, 0x1a, 0xa5, 0x76, 0x12, 0xf6, 0xdc, 0xf2, 0x91, 0xb7, 0xe9, 0x1a,
+		0xe1, 0xbc, 0x4d, 0x3d, 0x95, 0x71, 0x7d, 0xf8, 0x8d, 0x7c, 0x3e, 0x03, 0x4f, 0x53, 0xed, 0xfe,
+		0x52, 0xfd, 0xca, 0x5f, 0x93, 0xe1, 0x1a, 0x01, 0x1b, 0x02, 0xb7, 0x73, 0x4e, 0xba, 0x66, 0xe9,
+		0x78, 0x8b, 0x50, 0xfe, 0x11, 0xcb, 0xd1, 0x67, 0xd0, 0x22, 0x4f, 0x77, 0xea, 0xcd, 0x14, 0x15,
+		0x40, 0xae, 0x66, 0x5d, 0xe8, 0x2e, 0x7f, 0x1e, 0x88, 0x6f, 0x55, 0x79, 0xd6, 0xb9, 0x7e, 0xe3,
+		0xb5, 0xfd, 0x91, 0xa0, 0xc0, 0xf2, 0x26, 0x87, 0x4b, 0x2f, 0x9d, 0xf5, 0xa0,
+	};
+
+	CK_ATTRIBUTE expected[] = {
+		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
+		{ CKA_CLASS, &certificate, sizeof (certificate) },
+		{ CKA_TRUSTED, &falsev, sizeof (falsev) },
+		{ CKA_X_DISTRUSTED, &falsev, sizeof (falsev) },
+		{ CKA_VALUE, expected_value, sizeof (expected_value) },
+		{ CKA_INVALID },
+	};
+
+	p11_parser_formats (test.parser, p11_parser_format_pem, NULL);
+	ret = p11_parse_file (test.parser, SRCDIR "/files/openssl-trust-no-trust.pem", NULL,
+	                      P11_PARSE_FLAG_NONE);
+	assert_num_eq (P11_PARSE_SUCCESS, ret);
+
+	/* Should have gotten certificate  */
+	assert_num_eq (1, test.parsed->num);
+
+	cert = parsed_attrs (certificate_match, -1);
+	test_check_attrs (expected, cert);
+}
+
+static void
+test_parse_anchor (void)
 {
 	CK_ATTRIBUTE cacert3[] = {
 		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
@@ -351,26 +453,23 @@ test_parse_anchor (CuTest *cu)
 	CK_ATTRIBUTE *cert;
 	int ret;
 
-	setup (cu);
-
-	ret = p11_parse_file (test.parser, SRCDIR "/files/cacert3.der",
+	p11_parser_formats (test.parser, p11_parser_format_x509, NULL);
+	ret = p11_parse_file (test.parser, SRCDIR "/files/cacert3.der", NULL,
 	                      P11_PARSE_FLAG_ANCHOR);
-	CuAssertIntEquals (cu, P11_PARSE_SUCCESS, ret);
+	assert_num_eq (P11_PARSE_SUCCESS, ret);
 
 	/*
 	 * Should have gotten:
 	 * - 1 certificate
 	 */
-	CuAssertIntEquals (cu, 1, p11_index_size (test.index));
+	assert_num_eq (1, test.parsed->num);
 
-	cert = parsed_attrs (certificate_match);
-	test_check_attrs (cu, cacert3, cert);
-
-	teardown (cu);
+	cert = parsed_attrs (certificate_match, -1);
+	test_check_attrs (cacert3, cert);
 }
 
 static void
-test_parse_thawte (CuTest *cu)
+test_parse_thawte (void)
 {
 	CK_ATTRIBUTE *cert;
 	int ret;
@@ -384,213 +483,87 @@ test_parse_thawte (CuTest *cu)
 		{ CKA_INVALID },
 	};
 
-	setup (cu);
-
-	ret = p11_parse_file (test.parser, SRCDIR "/files/thawte.pem",
+	p11_parser_formats (test.parser, p11_parser_format_pem, NULL);
+	ret = p11_parse_file (test.parser, SRCDIR "/files/thawte.pem", NULL,
 	                      P11_PARSE_FLAG_NONE);
-	CuAssertIntEquals (cu, P11_PARSE_SUCCESS, ret);
+	assert_num_eq (P11_PARSE_SUCCESS, ret);
 
 	/* Should have gotten certificate  */
-	CuAssertIntEquals (cu, 1, p11_index_size (test.index));
+	assert_num_eq (1, test.parsed->num);
 
-	cert = parsed_attrs (certificate_match);
-	test_check_attrs (cu, expected, cert);
-
-	teardown (cu);
+	cert = parsed_attrs (certificate_match, -1);
+	test_check_attrs (expected, cert);
 }
 
 /* TODO: A certificate that uses generalTime needs testing */
 
 static void
-test_parse_invalid_file (CuTest *cu)
+test_parse_invalid_file (void)
 {
 	int ret;
 
-	setup (cu);
-
 	p11_message_quiet ();
 
-	ret = p11_parse_file (test.parser, "/nonexistant",
+	p11_parser_formats (test.parser, p11_parser_format_x509, NULL);
+	ret = p11_parse_file (test.parser, "/nonexistant", NULL,
 	                      P11_PARSE_FLAG_NONE);
-	CuAssertIntEquals (cu, P11_PARSE_FAILURE, ret);
+	assert_num_eq (P11_PARSE_FAILURE, ret);
 
 	p11_message_loud ();
-
-	teardown (cu);
 }
 
 static void
-test_parse_unrecognized (CuTest *cu)
+test_parse_unrecognized (void)
 {
 	int ret;
 
-	setup (cu);
-
 	p11_message_quiet ();
 
-	ret = p11_parse_file (test.parser, SRCDIR "/files/unrecognized-file.txt",
+	p11_parser_formats (test.parser, p11_parser_format_x509, NULL);
+	ret = p11_parse_file (test.parser, SRCDIR "/files/unrecognized-file.txt", NULL,
 	                      P11_PARSE_FLAG_NONE);
-	CuAssertIntEquals (cu, P11_PARSE_UNRECOGNIZED, ret);
+	assert_num_eq (P11_PARSE_UNRECOGNIZED, ret);
 
 	p11_message_loud ();
-
-	teardown (cu);
 }
 
 static void
-test_duplicate (CuTest *cu)
+test_parse_no_asn1_cache (void)
 {
-	CK_ATTRIBUTE cacert3[] = {
-		{ CKA_CLASS, &certificate, sizeof (certificate) },
-		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
-		{ CKA_VALUE, (void *)test_cacert3_ca_der, sizeof (test_cacert3_ca_der) },
-		{ CKA_MODIFIABLE, &falsev, sizeof (falsev) },
-		{ CKA_TRUSTED, &falsev, sizeof (falsev) },
-		{ CKA_X_DISTRUSTED, &falsev, sizeof (falsev) },
-		{ CKA_INVALID },
-	};
-
-	CK_OBJECT_HANDLE *handles;
-	CK_ATTRIBUTE *cert;
+	p11_parser *parser;
 	int ret;
 
-	setup (cu);
+	parser = p11_parser_new (NULL);
+	assert_ptr_not_null (parser);
 
-	ret = p11_parse_file (test.parser, SRCDIR "/files/cacert3.der", 0);
-	CuAssertIntEquals (cu, P11_PARSE_SUCCESS, ret);
+	p11_parser_formats (parser, p11_parser_format_x509, NULL);
+	ret = p11_parse_file (parser, SRCDIR "/files/cacert3.der", NULL, P11_PARSE_FLAG_NONE);
+	assert_num_eq (P11_PARSE_SUCCESS, ret);
 
-	p11_message_quiet ();
+	/* Should have gotten certificate  */
+	assert_num_eq (1, p11_parser_parsed (parser)->num);
 
-	/* This shouldn't be added, should print a message */
-	ret = p11_parse_file (test.parser, SRCDIR "/files/cacert3.der", 0);
-	CuAssertIntEquals (cu, P11_PARSE_SUCCESS, ret);
-
-	CuAssertTrue (cu, strstr (p11_message_last (), "duplicate") != NULL);
-
-	p11_message_loud ();
-
-	/* Should only be one certificate since the above two are identical */
-	handles = p11_index_find_all (test.index, cacert3, 2);
-	CuAssertPtrNotNull (cu, handles);
-	CuAssertTrue (cu, handles[0] != 0);
-	CuAssertTrue (cu, handles[1] == 0);
-
-	cert = p11_index_lookup (test.index, handles[0]);
-	test_check_attrs (cu, cacert3, cert);
-
-	free (handles);
-	teardown (cu);
-}
-
-static void
-test_duplicate_priority (CuTest *cu)
-{
-	CK_ATTRIBUTE cacert3[] = {
-		{ CKA_CLASS, &certificate, sizeof (certificate) },
-		{ CKA_VALUE, (void *)test_cacert3_ca_der, sizeof (test_cacert3_ca_der) },
-		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
-		{ CKA_MODIFIABLE, &falsev, sizeof (falsev) },
-		{ CKA_INVALID },
-	};
-
-	CK_ATTRIBUTE trusted[] = {
-		{ CKA_CLASS, &certificate, sizeof (certificate) },
-		{ CKA_VALUE, (void *)test_cacert3_ca_der, sizeof (test_cacert3_ca_der) },
-		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
-		{ CKA_TRUSTED, &truev, sizeof (truev) },
-		{ CKA_X_DISTRUSTED, &falsev, sizeof (falsev) },
-		{ CKA_INVALID },
-	};
-
-	CK_ATTRIBUTE distrust[] = {
-		{ CKA_CLASS, &certificate, sizeof (certificate) },
-		{ CKA_VALUE, (void *)test_cacert3_ca_der, sizeof (test_cacert3_ca_der) },
-		{ CKA_CERTIFICATE_TYPE, &x509, sizeof (x509) },
-		{ CKA_TRUSTED, &falsev, sizeof (falsev) },
-		{ CKA_X_DISTRUSTED, &truev, sizeof (truev) },
-		{ CKA_INVALID },
-	};
-
-	CK_OBJECT_HANDLE *handles;
-	CK_ATTRIBUTE *cert;
-	int ret;
-
-	setup (cu);
-
-	ret = p11_parse_file (test.parser, SRCDIR "/files/cacert3.der", 0);
-	CuAssertIntEquals (cu, P11_PARSE_SUCCESS, ret);
-
-	p11_message_quiet ();
-
-	/* This shouldn't be added, should print a message */
-	ret = p11_parse_file (test.parser, SRCDIR "/files/cacert3.der",
-	                      P11_PARSE_FLAG_ANCHOR);
-	CuAssertIntEquals (cu, P11_PARSE_SUCCESS, ret);
-
-	CuAssertTrue (cu, strstr (p11_message_last (), "duplicate") != NULL);
-
-	p11_message_loud ();
-
-	/* We should now find the trusted certificate */
-	handles = p11_index_find_all (test.index, cacert3, 2);
-	CuAssertPtrNotNull (cu, handles);
-	CuAssertTrue (cu, handles[0] != 0);
-	CuAssertTrue (cu, handles[1] == 0);
-	cert = p11_index_lookup (test.index, handles[0]);
-	test_check_attrs (cu, trusted, cert);
-	free (handles);
-
-	/* Now add a distrutsed one, this should override the trusted */
-
-	p11_message_quiet ();
-
-	ret = p11_parse_file (test.parser, SRCDIR "/files/cacert3.der",
-	                      P11_PARSE_FLAG_BLACKLIST);
-	CuAssertIntEquals (cu, P11_PARSE_SUCCESS, ret);
-
-	p11_message_loud ();
-
-	/* We should now find the distrusted certificate */
-	handles = p11_index_find_all (test.index, cacert3, 2);
-	CuAssertPtrNotNull (cu, handles);
-	CuAssertTrue (cu, handles[0] != 0);
-	CuAssertTrue (cu, handles[1] == 0);
-	cert = p11_index_lookup (test.index, handles[0]);
-	test_check_attrs (cu, distrust, cert);
-	free (handles);
-
-	teardown (cu);
+	p11_parser_free (parser);
 }
 
 int
-main (void)
+main (int argc,
+      char *argv[])
 {
-	CuString *output = CuStringNew ();
-	CuSuite* suite = CuSuiteNew ();
-	int ret;
+	p11_fixture (setup, teardown);
+	p11_test (test_parse_der_certificate, "/parser/parse_der_certificate");
+	p11_test (test_parse_pem_certificate, "/parser/parse_pem_certificate");
+	p11_test (test_parse_p11_kit_persist, "/parser/parse_p11_kit_persist");
+	p11_test (test_parse_openssl_trusted, "/parser/parse_openssl_trusted");
+	p11_test (test_parse_openssl_distrusted, "/parser/parse_openssl_distrusted");
+	p11_test (test_openssl_trusted_no_trust, "/parser/openssl-trusted-no-trust");
+	p11_test (test_parse_anchor, "/parser/parse_anchor");
+	p11_test (test_parse_thawte, "/parser/parse_thawte");
+	p11_test (test_parse_invalid_file, "/parser/parse_invalid_file");
+	p11_test (test_parse_unrecognized, "/parser/parse_unrecognized");
 
-	putenv ("P11_KIT_STRICT=1");
-	p11_debug_init ();
+	p11_fixture (NULL, NULL);
+	p11_test (test_parse_no_asn1_cache, "/parser/null-asn1-cache");
 
-	SUITE_ADD_TEST (suite, test_parse_der_certificate);
-	SUITE_ADD_TEST (suite, test_parse_pem_certificate);
-	SUITE_ADD_TEST (suite, test_parse_p11_kit_persist);
-	SUITE_ADD_TEST (suite, test_parse_openssl_trusted);
-	SUITE_ADD_TEST (suite, test_parse_openssl_distrusted);
-	SUITE_ADD_TEST (suite, test_parse_anchor);
-	SUITE_ADD_TEST (suite, test_parse_thawte);
-	SUITE_ADD_TEST (suite, test_parse_invalid_file);
-	SUITE_ADD_TEST (suite, test_parse_unrecognized);
-	SUITE_ADD_TEST (suite, test_duplicate);
-	SUITE_ADD_TEST (suite, test_duplicate_priority);
-
-	CuSuiteRun (suite);
-	CuSuiteSummary (suite, output);
-	CuSuiteDetails (suite, output);
-	printf ("%s\n", output->buffer);
-	ret = suite->failCount;
-	CuSuiteDelete (suite);
-	CuStringDelete (output);
-
-	return ret;
+	return p11_test_run (argc, argv);
 }

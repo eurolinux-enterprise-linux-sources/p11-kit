@@ -56,6 +56,7 @@ static struct DebugKey debug_keys[] = {
 	{ "uri", P11_DEBUG_URI },
 	{ "proxy", P11_DEBUG_PROXY },
 	{ "trust", P11_DEBUG_TRUST },
+	{ "tool", P11_DEBUG_TOOL },
 	{ 0, }
 };
 
@@ -125,15 +126,14 @@ void
 p11_debug_message (int flag,
                     const char *format, ...)
 {
-	char buffer[512];
 	va_list args;
 
 	if (flag & p11_debug_current_flags) {
+		fprintf (stderr, "(p11-kit:%d) ", getpid());
 		va_start (args, format);
-		vsnprintf (buffer, sizeof (buffer), format, args);
-		buffer[sizeof (buffer) -1] = 0;
+		vfprintf (stderr, format, args);
 		va_end (args);
-		fprintf (stderr, "(p11-kit:%d) %s\n", getpid(), buffer);
+		fprintf (stderr, "\n");
 	}
 }
 
@@ -147,6 +147,10 @@ p11_debug_precond (const char *format,
 	vfprintf (stderr, format, va);
 	va_end (va);
 
+#ifdef __COVERITY__
+	fprintf (stderr, "ignoring P11_KIT_STRICT under coverity: %d", (int)debug_strict);
+#else
 	if (debug_strict)
+#endif
 		abort ();
 }

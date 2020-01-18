@@ -161,7 +161,7 @@ p11_mutex_init (p11_mutex_t *mutex)
 	int ret;
 
 	pthread_mutexattr_init (&attr);
-	pthread_mutexattr_settype (&attr, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutexattr_settype (&attr, PTHREAD_MUTEX_DEFAULT);
 	ret = pthread_mutex_init (mutex, &attr);
 	assert (ret == 0);
 	pthread_mutexattr_destroy (&attr);
@@ -182,10 +182,11 @@ struct _p11_mmap {
 
 p11_mmap *
 p11_mmap_open (const char *path,
+               struct stat *sb,
                void **data,
                size_t *size)
 {
-	struct stat sb;
+	struct stat stb;
 	p11_mmap *map;
 
 	map = calloc (1, sizeof (p11_mmap));
@@ -198,15 +199,32 @@ p11_mmap_open (const char *path,
 		return NULL;
 	}
 
-	if (fstat (map->fd, &sb) < 0) {
+	if (sb == NULL) {
+		sb = &stb;
+		if (fstat (map->fd, &stb) < 0) {
+			close (map->fd);
+			free (map);
+			return NULL;
+		}
+	}
+
+	/* Workaround for broken ZFS on Linux */
+	if (S_ISDIR (sb->st_mode)) {
+		errno = EISDIR;
 		close (map->fd);
 		free (map);
 		return NULL;
 	}
 
-	map->size = sb.st_size;
+	if (sb->st_size == 0) {
+		*data = "";
+		*size = 0;
+		return map;
+	}
+
+	map->size = sb->st_size;
 	map->data = mmap (NULL, map->size, PROT_READ, MAP_PRIVATE, map->fd, 0);
-	if (data == NULL) {
+	if (map->data == MAP_FAILED) {
 		close (map->fd);
 		free (map);
 		return NULL;
@@ -220,7 +238,8 @@ p11_mmap_open (const char *path,
 void
 p11_mmap_close (p11_mmap *map)
 {
-	munmap (map->data, map->size);
+	if (map->size)
+		munmap (map->data, map->size);
 	close (map->fd);
 	free (map);
 }
@@ -243,6 +262,12 @@ p11_dl_error (void)
 	                (LPSTR)&msg_buf, 0, NULL);
 
 	return msg_buf;
+}
+
+void
+p11_dl_close (void *dl)
+{
+	FreeLibrary (dl);
 }
 
 int
@@ -283,6 +308,7 @@ struct _p11_mmap {
 
 p11_mmap *
 p11_mmap_open (const char *path,
+               struct stat *sb,
                void **data,
                size_t *size)
 {
@@ -309,14 +335,18 @@ p11_mmap_open (const char *path,
 		return NULL;
 	}
 
-	if (!GetFileSizeEx (map->file, &large)) {
-		errn = GetLastError ();
-		CloseHandle (map->file);
-		free (map);
-		SetLastError (errn);
-		if (errn == ERROR_ACCESS_DENIED)
-			errno = EPERM;
-		return NULL;
+	if (sb == NULL) {
+		if (!GetFileSizeEx (map->file, &large)) {
+			errn = GetLastError ();
+			CloseHandle (map->file);
+			free (map);
+			SetLastError (errn);
+			if (errn == ERROR_ACCESS_DENIED)
+				errno = EPERM;
+			return NULL;
+		}
+	} else {
+		large.QuadPart = sb->st_size;
 	}
 
 	mapping = CreateFileMapping (map->file, NULL, PAGE_READONLY, 0, 0, NULL);
@@ -489,27 +519,10 @@ strconcat (const char *first,
 
 #endif /* HAVE_STRCONCAT */
 
-#ifndef HAVE_ASPRINTF
-
-int
-asprintf (char **strp,
-          const char *fmt,
-          ...)
-{
-	va_list va;
-	int ret;
-
-	va_start (va, fmt);
-	ret = vasprintf (strp, fmt, va);
-	va_end (va);
-
-	return ret;
-}
-
-#endif /* HAVE_ASPRINTF */
-
 #ifndef HAVE_VASPRINTF
 #include <stdio.h>
+
+int vasprintf(char **strp, const char *fmt, va_list ap);
 
 int
 vasprintf (char **strp,
@@ -554,6 +567,27 @@ vasprintf (char **strp,
 }
 
 #endif /* HAVE_VASPRINTF */
+
+#ifndef HAVE_ASPRINTF
+
+int asprintf(char **strp, const char *fmt, ...);
+
+int
+asprintf (char **strp,
+          const char *fmt,
+          ...)
+{
+	va_list va;
+	int ret;
+
+	va_start (va, fmt);
+	ret = vasprintf (strp, fmt, va);
+	va_end (va);
+
+	return ret;
+}
+
+#endif /* HAVE_ASPRINTF */
 
 #ifndef HAVE_GMTIME_R
 
@@ -769,7 +803,11 @@ getauxval (unsigned long type)
 	assert (type == AT_SECURE);
 
 	if (!check_secure_initialized) {
-#if defined(HAVE_ISSETUGID)
+#if defined(HAVE___LIBC_ENABLE_SECURE)
+		extern int __libc_enable_secure;
+		secure = __libc_enable_secure;
+
+#elif defined(HAVE_ISSETUGID)
 		secure = issetugid ();
 
 #elif defined(OS_UNIX)
@@ -806,7 +844,22 @@ strerror_r (int errnum,
             size_t buflen)
 {
 #ifdef OS_WIN32
+#if _WIN32_WINNT < 0x502 /* WinXP or older */
+	int n = sys_nerr;
+	const char *p;
+	if (errnum < 0 || errnum >= n)
+		p = sys_errlist[n];
+	else
+		p = sys_errlist[errnum];
+	if (buf == NULL || buflen == 0)
+		return EINVAL;
+	strncpy(buf, p, buflen);
+	buf[buflen-1] = 0;
+	return 0;
+#else /* Server 2003 or newer */
 	return strerror_s (buf, buflen, errnum);
+#endif /*_WIN32_WINNT*/
+
 #else
 	#error no strerror_r implementation
 #endif

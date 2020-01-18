@@ -1,14 +1,17 @@
 Name:           p11-kit
-Version:        0.18.7
-Release:        4%{?dist}
+Version:        0.20.7
+Release:        3%{?dist}
 Summary:        Library for loading and sharing PKCS#11 modules
 
 License:        BSD
 URL:            http://p11-glue.freedesktop.org/p11-kit.html
 Source0:        http://p11-glue.freedesktop.org/releases/p11-kit-%{version}.tar.gz
-Source1:        p11-kit-extract-trust
+Source1:        trust-extract-compat
+Patch1:         pthread-atfork-fix-deadlock.patch
+
 BuildRequires:  libtasn1-devel >= 2.3
 BuildRequires:  nss-softokn-freebl
+BuildRequires:	libffi-devel
 BuildRequires:	gtk-doc
 
 %description
@@ -45,7 +48,7 @@ contains certificate anchors and black lists.
 
 
 # solution taken from icedtea-web.spec
-%define multilib_arches ppc64 sparc64 x86_64
+%define multilib_arches ppc64 sparc64 x86_64 s390x
 %ifarch %{multilib_arches}
 %define alt_ckbi  libnssckbi.so.%{_arch}
 %else
@@ -55,11 +58,12 @@ contains certificate anchors and black lists.
 
 %prep
 %setup -q
+%patch1 -p1
 
 %build
 # These paths are the source paths that  come from the plan here:
 # https://fedoraproject.org/wiki/Features/SharedSystemCertificates:SubTasks
-%configure --disable-static --enable-doc --with-trust-paths=%{_sysconfdir}/pki/ca-trust/source:%{_datadir}/pki/ca-trust-source --with-hash-impl=freebl
+%configure --disable-static --enable-doc --with-trust-paths=%{_sysconfdir}/pki/ca-trust/source:%{_datadir}/pki/ca-trust-source --with-hash-impl=freebl --disable-silent-rules
 make %{?_smp_mflags} V=1
 
 %install
@@ -79,14 +83,25 @@ make check
 
 %post trust
 %{_sbindir}/update-alternatives --install %{_libdir}/libnssckbi.so \
-        %{alt_ckbi} %{_libdir}/pkcs11/p11-kit-trust.so 30
+	%{alt_ckbi} %{_libdir}/pkcs11/p11-kit-trust.so 30
+
+# Fix bad links from earlier p11-kit packages which didn't include s390x
+%posttrans trust
+%ifarch s390x
+if %{_sbindir}/update-alternatives --display libnssckbi.so | grep -q lib64; then
+    %{_sbindir}/update-alternatives --remove libnssckbi.so %{_libdir}/pkcs11/p11-kit-trust.so
+    if test -e /usr/lib/nss/libnssckbi.so; then
+        %{_sbindir}/update-alternatives --install /usr/lib/libnssckbi.so libnssckbi.so /usr/lib/nss/libnssckbi.so 10
+    fi
+fi
+%endif
 
 %postun -p /sbin/ldconfig
 
 %postun trust
 if [ $1 -eq 0 ] ; then
-        # package removal
-        %{_sbindir}/update-alternatives --remove %{alt_ckbi} %{_libdir}/pkcs11/p11-kit-trust.so
+	# package removal
+	%{_sbindir}/update-alternatives --remove %{alt_ckbi} %{_libdir}/pkcs11/p11-kit-trust.so
 fi
 
 
@@ -113,12 +128,35 @@ fi
 %doc %{_datadir}/gtk-doc/
 
 %files trust
+%{_bindir}/trust
+%{_mandir}/man1/trust.1.gz
 %{_libdir}/pkcs11/p11-kit-trust.so
 %{_datadir}/p11-kit/modules/p11-kit-trust.module
-%{_libdir}/p11-kit/p11-kit-extract-trust
+%{_libdir}/p11-kit/trust-extract-compat
 
 
 %changelog
+* Thu Jan 08 2015 Stef Walter <stefw@redhat.com> - 0.20.7-3
+- Fix incorrect alternative links for s390 and s390x rhbz#1174178
+
+* Sun Oct 05 2014 Stef Walter <stefw@redhat.com> - 0.20.7-2
+- Fix deadlock related to forking and pthread_atfork rhbz#1148774
+
+* Thu Sep 18 2014 Stef Walter <stefw@redhat.com> - 0.20.7-1
+- Update to upstream stable 0.20.7 release
+- Expose pkcs11x.h header and defines for attached extensions rhbz#1142305
+
+* Tue Sep 09 2014 Stef Walter <stefw@redhat.com> - 0.20.6-1
+- Update to upstream stable 0.20.6 release
+- Respect critical = no in p11-kit-proxy.so rhbz#1128615
+
+* Fri Sep 05 2014 Stef Walter <stefw@redhat.com> - 0.20.5-1
+- Update to upstream version 0.20.5
+- Fixes several issues highlighted at rhbz#1128218
+
+* Thu Aug 07 2014 Stef Walter <stefw@redhat.com> - 0.20.4-1
+- Rebase to upstream version 0.20.x (#1122528)
+
 * Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 0.18.7-4
 - Mass rebuild 2014-01-24
 
