@@ -1,6 +1,6 @@
 Name:           p11-kit
 Version:        0.18.7
-Release:        2%{?dist}
+Release:        4%{?dist}
 Summary:        Library for loading and sharing PKCS#11 modules
 
 License:        BSD
@@ -119,6 +119,12 @@ fi
 
 
 %changelog
+* Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 0.18.7-4
+- Mass rebuild 2014-01-24
+
+* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 0.18.7-3
+- Mass rebuild 2013-12-27
+
 * Mon Nov 04 2013 Stef Walter <stefw@redhat.com> - 0.18.7-2
 - Move devel docs into subpackage due to gtk-doc multilib incompatibility (#983176)
 
