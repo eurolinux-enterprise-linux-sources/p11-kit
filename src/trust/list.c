@@ -40,11 +40,13 @@
 #include "constants.h"
 #include "debug.h"
 #include "enumerate.h"
-#include "iter.h"
 #include "list.h"
-#include "pkcs11x.h"
 #include "message.h"
+#include "pkcs11x.h"
 #include "tool.h"
+#include "url.h"
+
+#include "p11-kit/iter.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -82,11 +84,13 @@ static bool
 list_iterate (p11_enumerate *ex,
               bool details)
 {
+	unsigned char *bytes;
 	CK_OBJECT_HANDLE object;
 	CK_ATTRIBUTE *attr;
 	CK_ULONG klass;
 	CK_ULONG category;
 	CK_BBOOL val;
+	p11_buffer buf;
 	CK_RV rv;
 	const char *nick;
 	char *string;
@@ -139,6 +143,17 @@ list_iterate (p11_enumerate *ex,
 			nick = p11_constant_nick (p11_constant_categories, category);
 			if (nick != NULL)
 				printf ("    category: %s\n", nick);
+		}
+
+		if (details) {
+			attr = p11_attrs_find_valid (ex->attrs, CKA_PUBLIC_KEY_INFO);
+			if (attr) {
+				p11_buffer_init (&buf, 1024);
+				bytes = attr->pValue;
+				p11_url_encode (bytes, bytes + attr->ulValueLen, "", &buf);
+				printf ("    public-key-info: %.*s\n", (int)buf.len, (char *)buf.data);
+				p11_buffer_uninit (&buf);
+			}
 		}
 
 		printf ("\n");
@@ -238,6 +253,7 @@ p11_trust_list (int argc,
 	if (!p11_enumerate_ready (&ex, "trust-policy"))
 		exit (1);
 
+	ex.flags |= P11_ENUMERATE_CORRELATE;
 	ret = list_iterate (&ex, details) ? 0 : 1;
 
 	p11_enumerate_cleanup (&ex);

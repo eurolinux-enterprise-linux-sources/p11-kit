@@ -7,6 +7,9 @@
    language is requested. */
 #undef ENABLE_NLS
 
+/* File extension for executables */
+#undef EXEEXT
+
 /* Define to 1 if you have the `asprintf' function. */
 #undef HAVE_ASPRINTF
 
@@ -44,11 +47,17 @@
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #undef HAVE_DLFCN_H
 
+/* Define to 1 if you have the `fdwalk' function. */
+#undef HAVE_FDWALK
+
 /* Define to 1 if you have the `getauxval' function. */
 #undef HAVE_GETAUXVAL
 
 /* Define to 1 if you have the `getexecname' function. */
 #undef HAVE_GETEXECNAME
+
+/* Define to 1 if you have the `getpeereid' function. */
+#undef HAVE_GETPEEREID
 
 /* Define to 1 if you have the `getprogname' function. */
 #undef HAVE_GETPROGNAME
@@ -92,6 +101,18 @@
 /* Whether program_invocation_short_name available */
 #undef HAVE_PROGRAM_INVOCATION_SHORT_NAME
 
+/* Define to 1 if you have the `secure_getenv' function. */
+#undef HAVE_SECURE_GETENV
+
+/* Define to 1 if you have the `setenv' function. */
+#undef HAVE_SETENV
+
+/* Define to 1 if the system has the type `sighandler_t'. */
+#undef HAVE_SIGHANDLER_T
+
+/* Define to 1 if the system has the type `sig_t'. */
+#undef HAVE_SIG_T
+
 /* Define to 1 if stdbool.h conforms to C99. */
 #undef HAVE_STDBOOL_H
 
@@ -116,14 +137,17 @@
 /* Define to 1 if you have the `strnstr' function. */
 #undef HAVE_STRNSTR
 
+/* Define to 1 if `d_type' is a member of `struct dirent'. */
+#undef HAVE_STRUCT_DIRENT_D_TYPE
+
+/* Define to 1 if you have the <sys/resource.h> header file. */
+#undef HAVE_SYS_RESOURCE_H
+
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #undef HAVE_SYS_STAT_H
 
 /* Define to 1 if you have the <sys/types.h> header file. */
 #undef HAVE_SYS_TYPES_H
-
-/* Define to 1 if you have the `timegm' function. */
-#undef HAVE_TIMEGM
 
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
@@ -143,15 +167,14 @@
 /* Whether __progname available */
 #undef HAVE___PROGNAME
 
-/* Define to the sub-directory in which libtool stores uninstalled libraries.
-   */
+/* Define to 1 if the system has the type `__sighandler_t'. */
+#undef HAVE___SIGHANDLER_T
+
+/* Define to the sub-directory where libtool stores uninstalled libraries. */
 #undef LT_OBJDIR
 
 /* Disable glib assertions */
 #undef NDEBUG
-
-/* Define to 1 if your C compiler doesn't accept -c and -o together. */
-#undef NO_MINUS_C_MINUS_O
 
 /* Building for unix */
 #undef OS_UNIX

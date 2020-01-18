@@ -165,6 +165,10 @@ p11_mmap *  p11_mmap_open   (const char *path,
 
 void        p11_mmap_close  (p11_mmap *map);
 
+#ifndef HAVE_SETENV
+#define setenv(n, v, z) _putenv_s(n, v)
+#endif /* HAVE_SETENV */
+
 #endif /* OS_WIN32 */
 
 /* ----------------------------------------------------------------------------
@@ -317,6 +321,8 @@ unsigned long     getauxval (unsigned long type);
 
 #endif /* !HAVE_GETAUXVAL */
 
+char *            secure_getenv (const char *name);
+
 #ifndef HAVE_STRERROR_R
 
 int         strerror_r      (int errnum,
@@ -324,5 +330,12 @@ int         strerror_r      (int errnum,
                              size_t buflen);
 
 #endif /* HAVE_STRERROR_R */
+
+#ifndef HAVE_FDWALK
+
+int        fdwalk           (int (* cb) (void *data, int fd),
+                             void *data);
+
+#endif
 
 #endif /* __COMPAT_H__ */

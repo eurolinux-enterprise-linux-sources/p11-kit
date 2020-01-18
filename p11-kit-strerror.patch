@@ -1,0 +1,17 @@
+diff -up ./p11-kit/rpc-transport.c.strerror ./p11-kit/rpc-transport.c
+--- ./p11-kit/rpc-transport.c.strerror	2017-06-12 11:44:45.799209430 +0200
++++ ./p11-kit/rpc-transport.c	2017-06-12 11:46:41.979498070 +0200
+@@ -1065,7 +1065,12 @@ rpc_unix_connect (p11_rpc_client_vtable
+ 	}
+ 
+ 	if (connect (fd, (struct sockaddr *)&run->sa, sizeof (run->sa)) < 0) {
+-		p11_debug ("failed to connect to socket: %s", strerror (errno));
++		int errn = errno;
++		char strerr[P11_MESSAGE_MAX];
++		snprintf (strerr, sizeof (strerr), "Unknown error %d", errn);
++		strerror_r (errn, strerr, sizeof (strerr));
++		strerr[P11_MESSAGE_MAX - 1] = 0;
++		p11_debug ("failed to connect to socket: %s", strerr);
+ 		close (fd);
+ 		return CKR_DEVICE_REMOVED;
+ 	}

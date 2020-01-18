@@ -51,6 +51,7 @@
 #include "p11-kit.h"
 #include "private.h"
 #include "proxy.h"
+#include "rpc.h"
 #include "virtual.h"
 
 #include <sys/stat.h>
@@ -145,6 +146,7 @@ typedef struct _Module {
 
 	/* Registered modules */
 	char *name;
+	char *filename;
 	p11_dict *config;
 	bool critical;
 
@@ -157,7 +159,7 @@ typedef struct _Module {
 
 	/* Initialization, mutex must be held */
 	p11_mutex_t initialize_mutex;
-	bool initialize_called;
+	unsigned int initialize_called;
 	p11_thread_id_t initialize_thread;
 } Module;
 
@@ -171,6 +173,13 @@ static struct _Shared {
 	p11_dict *managed_by_closure;
 	p11_dict *config;
 } gl = { NULL, NULL };
+
+/* These are global variables to be overridden in tests */
+const char *p11_config_system_file = P11_SYSTEM_CONFIG_FILE;
+const char *p11_config_user_file = P11_USER_CONFIG_FILE;
+const char *p11_config_package_modules = P11_PACKAGE_CONFIG_MODULES;
+const char *p11_config_system_modules = P11_SYSTEM_CONFIG_MODULES;
+const char *p11_config_user_modules = P11_USER_CONFIG_MODULES;
 
 /* -----------------------------------------------------------------------------
  * P11-KIT FUNCTIONALITY
@@ -239,9 +248,10 @@ free_module_unlocked (void *data)
 		p11_debug_precond ("module unloaded without C_Finalize having been "
 		                   "called for each C_Initialize");
 	} else {
-		assert (!mod->initialize_called);
 		assert (mod->initialize_thread == 0);
 	}
+
+	p11_virtual_uninit (&mod->virt);
 
 	if (mod->loaded_destroy)
 		mod->loaded_destroy (mod->loaded_module);
@@ -249,6 +259,7 @@ free_module_unlocked (void *data)
 	p11_mutex_uninit (&mod->initialize_mutex);
 	p11_dict_free (mod->config);
 	free (mod->name);
+	free (mod->filename);
 	free (mod);
 }
 
@@ -277,6 +288,16 @@ alloc_module_unlocked (void)
 
 	return mod;
 }
+
+#ifdef __GNUC__
+bool       p11_proxy_module_check                    (CK_FUNCTION_LIST_PTR module) __attribute__((weak));
+
+bool
+p11_proxy_module_check (CK_FUNCTION_LIST_PTR module)
+{
+	return false;
+}
+#endif
 
 static CK_RV
 dlopen_and_get_function_list (Module *mod,
@@ -356,6 +377,8 @@ load_module_from_file_inlock (const char *name,
 	p11_debug ("loading module %s%sfrom path: %s",
 	           name ? name : "", name ? " " : "", path);
 
+	mod->filename = strdup (path);
+
 	rv = dlopen_and_get_function_list (mod, path, &funcs);
 	free (expand);
 
@@ -381,6 +404,37 @@ load_module_from_file_inlock (const char *name,
 	}
 
 	*result= mod;
+	return CKR_OK;
+}
+
+static CK_RV
+setup_module_for_remote_inlock (const char *name,
+                                const char *remote,
+                                Module **result)
+{
+	p11_rpc_transport *rpc;
+	Module *mod;
+
+	p11_debug ("remoting module %s using: %s", name, remote);
+
+	mod = alloc_module_unlocked ();
+	return_val_if_fail (mod != NULL, CKR_HOST_MEMORY);
+
+	rpc = p11_rpc_transport_new (&mod->virt, remote, name);
+	if (rpc == NULL) {
+		free_module_unlocked (mod);
+		return CKR_DEVICE_ERROR;
+	}
+
+	mod->filename = NULL;
+	mod->loaded_module = rpc;
+	mod->loaded_destroy = p11_rpc_transport_free;
+
+	/* This takes ownership of the module */
+	if (!p11_dict_set (gl.modules, mod, mod))
+		return_val_if_reached (CKR_HOST_MEMORY);
+
+	*result = mod;
 	return CKR_OK;
 }
 
@@ -444,9 +498,10 @@ take_config_and_load_module_inlock (char **name,
                                     p11_dict **config,
                                     bool critical)
 {
-	const char *filename;
+	const char *filename = NULL;
+	const char *remote = NULL;
+	CK_RV rv = CKR_OK;
 	Module *mod;
-	CK_RV rv;
 
 	assert (name);
 	assert (*name);
@@ -454,17 +509,35 @@ take_config_and_load_module_inlock (char **name,
 	assert (*config);
 
 	if (!is_module_enabled_unlocked (*name, *config))
-		return CKR_OK;
+		goto out;
 
-	filename = p11_dict_get (*config, "module");
-	if (filename == NULL) {
-		p11_debug ("no module path for module, skipping: %s", *name);
-		return CKR_OK;
+	remote = p11_dict_get (*config, "remote");
+	if (remote == NULL) {
+		filename = p11_dict_get (*config, "module");
+		if (filename == NULL) {
+			p11_debug ("no module path for module, skipping: %s", *name);
+			goto out;
+		}
 	}
 
-	rv = load_module_from_file_inlock (*name, filename, &mod);
-	if (rv != CKR_OK)
-		return CKR_OK;
+	if (remote != NULL) {
+		rv = setup_module_for_remote_inlock (*name, remote, &mod);
+		if (rv != CKR_OK)
+			goto out;
+
+	} else {
+
+		rv = load_module_from_file_inlock (*name, filename, &mod);
+		if (rv != CKR_OK)
+			goto out;
+	}
+
+	/*
+	 * We support setting of CK_C_INITIALIZE_ARGS.pReserved from
+	 * 'x-init-reserved' setting in the config. This only works with specific
+	 * PKCS#11 modules, and is non-standard use of that field.
+	 */
+	mod->init_args.pReserved = p11_dict_get (*config, "x-init-reserved");
 
 	/* Take ownership of thes evariables */
 	p11_dict_free (mod->config);
@@ -475,14 +548,8 @@ take_config_and_load_module_inlock (char **name,
 	*name = NULL;
 	mod->critical = critical;
 
-	/*
-	 * We support setting of CK_C_INITIALIZE_ARGS.pReserved from
-	 * 'x-init-reserved' setting in the config. This only works with specific
-	 * PKCS#11 modules, and is non-standard use of that field.
-	 */
-	mod->init_args.pReserved = p11_dict_get (mod->config, "x-init-reserved");
-
-	return CKR_OK;
+out:
+	return rv;
 }
 
 static CK_RV
@@ -501,16 +568,16 @@ load_registered_modules_unlocked (void)
 		return CKR_OK;
 
 	/* Load the global configuration files */
-	config = _p11_conf_load_globals (P11_SYSTEM_CONFIG_FILE, P11_USER_CONFIG_FILE, &mode);
+	config = _p11_conf_load_globals (p11_config_system_file, p11_config_user_file, &mode);
 	if (config == NULL)
 		return CKR_GENERAL_ERROR;
 
 	assert (mode != CONF_USER_INVALID);
 
 	configs = _p11_conf_load_modules (mode,
-	                                  P11_PACKAGE_CONFIG_MODULES,
-	                                  P11_SYSTEM_CONFIG_MODULES,
-	                                  P11_USER_CONFIG_MODULES);
+	                                  p11_config_package_modules,
+	                                  p11_config_system_modules,
+	                                  p11_config_user_modules);
 	if (configs == NULL) {
 		rv = CKR_GENERAL_ERROR;
 		p11_dict_free (config);
@@ -555,7 +622,7 @@ load_registered_modules_unlocked (void)
 }
 
 static CK_RV
-initialize_module_inlock_reentrant (Module *mod)
+initialize_module_inlock_reentrant (Module *mod, CK_C_INITIALIZE_ARGS *init_args)
 {
 	CK_RV rv = CKR_OK;
 	p11_thread_id_t self;
@@ -580,21 +647,31 @@ initialize_module_inlock_reentrant (Module *mod)
 	p11_unlock ();
 	p11_mutex_lock (&mod->initialize_mutex);
 
-	if (!mod->initialize_called) {
+	if (mod->initialize_called != p11_forkid) {
 		p11_debug ("C_Initialize: calling");
 
+		/* The init_args argument takes precedence over mod->init_args */
+		if (init_args == NULL)
+			init_args = &mod->init_args;
+
 		rv = mod->virt.funcs.C_Initialize (&mod->virt.funcs,
-		                                   &mod->init_args);
+						   init_args);
 
 		p11_debug ("C_Initialize: result: %lu", rv);
 
 		/* Module was initialized and C_Finalize should be called */
 		if (rv == CKR_OK)
-			mod->initialize_called = true;
+			mod->initialize_called = p11_forkid;
+		else
+			mod->initialize_called = 0;
 
 		/* Module was already initialized, we don't call C_Finalize */
-		else if (rv == CKR_CRYPTOKI_ALREADY_INITIALIZED)
+		if (rv == CKR_CRYPTOKI_ALREADY_INITIALIZED)
 			rv = CKR_OK;
+
+		/* Matches the init count in finalize_module_inlock_reentrant() */
+		if (rv == CKR_OK)
+			mod->init_count = 0;
 	}
 
 	p11_mutex_unlock (&mod->initialize_mutex);
@@ -611,31 +688,6 @@ initialize_module_inlock_reentrant (Module *mod)
 	mod->initialize_thread = 0;
 	return rv;
 }
-
-#ifdef OS_UNIX
-
-static void
-reinitialize_after_fork (void)
-{
-	p11_dictiter iter;
-	Module *mod;
-
-	p11_debug ("forked");
-
-	p11_lock ();
-
-		if (gl.modules) {
-			p11_dict_iterate (gl.modules, &iter);
-			while (p11_dict_next (&iter, (void **)&mod, NULL))
-				mod->initialize_called = false;
-		}
-
-	p11_unlock ();
-
-	p11_proxy_after_fork ();
-}
-
-#endif /* OS_UNIX */
 
 static CK_RV
 init_globals_unlocked (void)
@@ -666,9 +718,6 @@ init_globals_unlocked (void)
 	if (once)
 		return CKR_OK;
 
-#ifdef OS_UNIX
-	pthread_atfork (NULL, NULL, reinitialize_after_fork);
-#endif
 	once = true;
 
 	return CKR_OK;
@@ -716,7 +765,7 @@ finalize_module_inlock_reentrant (Module *mod)
 		return CKR_OK;
 
 	/*
-	 * Becuase of the mutex unlock below, we temporarily increase
+	 * Because of the mutex unlock below, we temporarily increase
 	 * the ref count. This prevents module from being freed out
 	 * from ounder us.
 	 */
@@ -724,9 +773,9 @@ finalize_module_inlock_reentrant (Module *mod)
 	p11_unlock ();
 	p11_mutex_lock (&mod->initialize_mutex);
 
-	if (mod->initialize_called) {
+	if (mod->initialize_called == p11_forkid) {
 		mod->virt.funcs.C_Finalize (&mod->virt.funcs, NULL);
-		mod->initialize_called = false;
+		mod->initialize_called = 0;
 	}
 
 	p11_mutex_unlock (&mod->initialize_mutex);
@@ -764,7 +813,7 @@ initialize_registered_inlock_reentrant (void)
 			if (mod->name == NULL || !is_module_enabled_unlocked (mod->name, mod->config))
 				continue;
 
-			rv = initialize_module_inlock_reentrant (mod);
+			rv = initialize_module_inlock_reentrant (mod, NULL);
 			if (rv != CKR_OK) {
 				if (mod->critical) {
 					p11_message ("initialization of critical module '%s' failed: %s",
@@ -1128,6 +1177,46 @@ p11_kit_module_get_name (CK_FUNCTION_LIST *module)
 	return name;
 }
 
+/**
+ * p11_kit_module_get_filename:
+ * @module: pointer to a loaded module
+ *
+ * Get the configured name of the PKCS\#11 module.
+ *
+ * Configured modules are loaded by p11_kit_modules_load(). The module
+ * passed to this function can be either managed or unmanaged. Non
+ * configured modules will return %NULL.
+ *
+ * Use free() to release the return value when you're done with it.
+ *
+ * Returns: a newly allocated string containing the module name, or
+ *     <code>NULL</code> if the module is not a configured module
+ */
+char *
+p11_kit_module_get_filename (CK_FUNCTION_LIST *module)
+{
+	Module *mod;
+	char *name = NULL;
+
+	return_val_if_fail (module != NULL, NULL);
+
+	p11_library_init_once ();
+
+	p11_lock ();
+
+		p11_message_clear ();
+
+		if (gl.modules) {
+			mod = module_for_functions_inlock (module);
+			if (mod && mod->filename)
+				name = strdup (mod->filename);
+		}
+
+	p11_unlock ();
+
+	return name;
+}
+
 static const char *
 module_get_option_inlock (Module *mod,
                           const char *option)
@@ -1384,7 +1473,7 @@ cleanup:
 typedef struct {
 	p11_virtual virt;
 	Module *mod;
-	pid_t initialized;
+	unsigned int initialized;
 	p11_dict *sessions;
 } Managed;
 
@@ -1394,14 +1483,12 @@ managed_C_Initialize (CK_X_FUNCTION_LIST *self,
 {
 	Managed *managed = ((Managed *)self);
 	p11_dict *sessions;
-	pid_t pid;
 	CK_RV rv;
 
 	p11_debug ("in");
 	p11_lock ();
 
-	pid = getpid ();
-	if (managed->initialized == pid) {
+	if (managed->initialized == p11_forkid) {
 		rv = CKR_CRYPTOKI_ALREADY_INITIALIZED;
 
 	} else {
@@ -1411,10 +1498,12 @@ managed_C_Initialize (CK_X_FUNCTION_LIST *self,
 		if (!sessions)
 			rv = CKR_HOST_MEMORY;
 		else
-			rv = initialize_module_inlock_reentrant (managed->mod);
+			rv = initialize_module_inlock_reentrant (managed->mod, init_args);
 		if (rv == CKR_OK) {
+			if (managed->sessions)
+				p11_dict_free (managed->sessions);
 			managed->sessions = sessions;
-			managed->initialized = pid;
+			managed->initialized = p11_forkid;
 		} else {
 			p11_dict_free (sessions);
 		}
@@ -1515,18 +1604,16 @@ managed_C_Finalize (CK_X_FUNCTION_LIST *self,
 {
 	Managed *managed = ((Managed *)self);
 	CK_SESSION_HANDLE *sessions;
-	pid_t pid;
 	int count;
 	CK_RV rv;
 
 	p11_debug ("in");
 	p11_lock ();
 
-	pid = getpid ();
 	if (managed->initialized == 0) {
 		rv = CKR_CRYPTOKI_NOT_INITIALIZED;
 
-	} else if (managed->initialized != pid) {
+	} else if (managed->initialized != p11_forkid) {
 		/*
 		 * In theory we should be returning CKR_CRYPTOKI_NOT_INITIALIZED here
 		 * but enough callers are not completely aware of their forking.
@@ -1622,9 +1709,13 @@ managed_C_CloseAllSessions (CK_X_FUNCTION_LIST *self,
 
 	self = &managed->mod->virt.funcs;
 	managed_close_sessions (self, stolen, count);
-	free (stolen);
+	if (stolen) {
+		free (stolen);
+		return CKR_OK;
+	} else {
+		return CKR_GENERAL_ERROR;
+	}
 
-	return stolen ? CKR_OK : CKR_GENERAL_ERROR;
 }
 
 static void
@@ -1677,22 +1768,11 @@ lookup_managed_option (Module *mod,
 	value = _p11_conf_parse_boolean (string, def_value);
 
 	if (!supported && value != supported) {
-		if (!p11_virtual_can_wrap ()) {
-			/*
-			 * This is because libffi dependency was not built. The libffi dependency
-			 * is highly recommended and building without it results in a large loss
-			 * of functionality.
-			 */
-			p11_message ("the '%s' option for module '%s' is not supported on this system",
-			             option, mod->name);
-		} else {
-			/*
-			 * This is because the module is running in unmanaged mode, so turn off the
-			 */
-			p11_message ("the '%s' option for module '%s' is only supported for managed modules",
-			             option, mod->name);
-		}
-		return false;
+	  /*
+	   * This is because the module is running in unmanaged mode, so turn off the
+	   */
+	  p11_message ("the '%s' option for module '%s' is only supported for managed modules",
+		       option, mod->name);
 	}
 
 	return value;
@@ -1774,7 +1854,7 @@ prepare_module_inlock_reentrant (Module *mod,
 		is_managed = false;
 		with_log = false;
 	} else {
-		is_managed = lookup_managed_option (mod, p11_virtual_can_wrap (), "managed", true);
+		is_managed = lookup_managed_option (mod, true, "managed", true);
 		with_log = lookup_managed_option (mod, is_managed, "log-calls", false);
 	}
 
@@ -1790,7 +1870,8 @@ prepare_module_inlock_reentrant (Module *mod,
 		}
 
 		*module = p11_virtual_wrap (virt, destroyer);
-		return_val_if_fail (*module != NULL, CKR_GENERAL_ERROR);
+		if (*module == NULL)
+			return CKR_GENERAL_ERROR;
 
 		if (!p11_dict_set (gl.managed_by_closure, *module, mod))
 			return_val_if_reached (CKR_HOST_MEMORY);
@@ -1882,7 +1963,7 @@ p11_modules_load_inlock_reentrant (int flags,
  * If @flags contains the %P11_KIT_MODULE_CRITICAL flag then the
  * modules will all be treated as 'critical', regardless of the module
  * configuration. This means that a failure to load any module will
- * cause this funtion to fail.
+ * cause this function to fail.
  *
  * For unmanaged modules there is no guarantee to the state of the
  * modules. Other callers may be using the modules. Using unmanaged
@@ -2223,7 +2304,7 @@ p11_kit_initialize_module (CK_FUNCTION_LIST_PTR module)
 		if (rv == CKR_OK) {
 			mod = p11_dict_get (gl.unmanaged_by_funcs, module);
 			assert (mod != NULL);
-			rv = initialize_module_inlock_reentrant (mod);
+			rv = initialize_module_inlock_reentrant (mod, NULL);
 			if (rv != CKR_OK) {
 				p11_message ("module initialization failed: %s", p11_kit_strerror (rv));
 				p11_module_release_inlock_reentrant (module);
@@ -2257,17 +2338,15 @@ p11_module_load_inlock_reentrant (CK_FUNCTION_LIST *module,
 		}
 
 		/* If this was newly allocated, add it to the list */
-		if (rv == CKR_OK && allocated) {
+		if (allocated) {
 			if (!p11_dict_set (gl.modules, allocated, allocated) ||
 			    !p11_dict_set (gl.unmanaged_by_funcs, module, allocated))
 				return_val_if_reached (CKR_HOST_MEMORY);
 			allocated = NULL;
 		}
 
-		if (rv == CKR_OK) {
 			/* WARNING: Reentrancy can occur here */
 			rv = prepare_module_inlock_reentrant (mod, flags, result);
-		}
 
 		free (allocated);
 	}
@@ -2286,12 +2365,15 @@ p11_module_load_inlock_reentrant (CK_FUNCTION_LIST *module,
 
 /**
  * p11_kit_module_load:
- * @module_path: full file path of module library
+ * @module_path: relative or full file path of module library
  * @flags: flags to use when loading the module
  *
  * Load an arbitrary PKCS\#11 module from a dynamic library file, and
  * initialize it. Normally using the p11_kit_modules_load() function
  * is preferred.
+ *
+ * A full file path or just (path/)filename relative to
+ * P11_MODULE_PATH are accepted.
  *
  * Using this function to load modules allows coordination between multiple
  * callers of the same module in a single process. If @flags contains the
@@ -2602,11 +2684,11 @@ p11_kit_load_initialize_module (const char *module_path,
 			if (rv == CKR_OK) {
 
 				/* WARNING: Reentrancy can occur here */
-				rv = initialize_module_inlock_reentrant (mod);
+				rv = initialize_module_inlock_reentrant (mod, NULL);
 			}
 		}
 
-		if (rv == CKR_OK && module) {
+		if (rv == CKR_OK) {
 			*module = unmanaged_for_module_inlock (mod);
 			assert (*module != NULL);
 		}

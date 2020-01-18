@@ -38,6 +38,7 @@
 #include "debug.h"
 #include "message.h"
 #include "path.h"
+#include "p11-kit.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -61,6 +62,7 @@ int       p11_kit_external        (int argc,
 
 static const p11_tool_command commands[] = {
 	{ "list-modules", p11_kit_list_modules, "List modules and tokens" },
+	{ "remote", p11_kit_external, "Run a specific PKCS#11 module remotely" },
 	{ P11_TOOL_FALLBACK, p11_kit_external, NULL },
 	{ 0, }
 };
@@ -91,6 +93,7 @@ int
 p11_kit_external (int argc,
                   char *argv[])
 {
+	const char *private_dir;
 	char *filename;
 	char *path;
 
@@ -102,13 +105,22 @@ p11_kit_external (int argc,
 		return p11_kit_trust (argc, argv);
 	}
 
-	if (asprintf (&filename, "p11-kit-%s", argv[0]) < 0)
+	if (asprintf (&filename, "p11-kit-%s%s", argv[0], EXEEXT) < 0)
 		return_val_if_reached (1);
 
+	private_dir = secure_getenv ("P11_KIT_PRIVATEDIR");
+	if (!private_dir || !private_dir[0])
+		private_dir = PRIVATEDIR;
+
 	/* Add our libexec directory to the path */
-	path = p11_path_build (PRIVATEDIR, filename, NULL);
+	path = p11_path_build (private_dir, filename, NULL);
 	return_val_if_fail (path != NULL, 1);
 
+	/* Windows execv() requires the first element of ARGV must be
+	 * the executable name */
+#ifdef OS_WIN32
+	argv[0] = path;
+#endif
 	argv[argc] = NULL;
 	execv (path, argv);
 

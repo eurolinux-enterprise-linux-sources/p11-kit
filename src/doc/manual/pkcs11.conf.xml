@@ -131,14 +131,6 @@ x-custom : text
 			not present, then any process will load the module.</para>
 		</listitem>
 	</varlistentry>
-	<varlistentry id="option-isolated">
-		<term><option>isolated:</option></term>
-		<listitem>
-			<para>Set to <literal>yes</literal> to run this PKCS#11 module in its own
-			process. This is a simple way to set the <option>remote</option> to
-			accomplish the same thing.</para>
-		</listitem>
-	</varlistentry>
 	<varlistentry>
 		<term><option>managed:</option></term>
 		<listitem>
@@ -146,7 +138,7 @@ x-custom : text
 			p11-kit. Making a module unmanaged is not recommended, and will cause
 			problems if multiple callers in a single process share a PKCS#11 module.</para>
 
-			<para>This argument is optonal and defaults to <literal>yes</literal>.</para>
+			<para>This argument is optional and defaults to <literal>yes</literal>.</para>
 		</listitem>
 	</varlistentry>
 	<varlistentry>
@@ -154,7 +146,7 @@ x-custom : text
 		<listitem>
 			<para>The value should be an integer. When lists of modules are
 			returned to a caller of p11-kit, modules with a higher number are sorted
-			first. When applications search modules for for certificates, keys and
+			first. When applications search modules for certificates, keys and
 			trust policy information, this setting will affect what find
 			first.</para>
 			<para>This argument is optional, and defaults to zero. Modules
@@ -162,7 +154,7 @@ x-custom : text
 			alphabetically.</para>
 		</listitem>
 	</varlistentry>
-	<varlistentry>
+	<varlistentry id="option-remote">
 		<term><option>remote:</option></term>
 		<listitem>
 			<para>Instead of loading the PKCS#11 module locally, run the module
@@ -173,6 +165,7 @@ x-custom : text
 <programlisting>
 remote: |ssh user@remote p11-kit remote /path/to/module.so
 </programlisting>
+			<para>Other forms of remoting will appear in later p11-kit releases.</para>
 		</listitem>
 	</varlistentry>
 	<varlistentry>
@@ -188,7 +181,7 @@ remote: |ssh user@remote p11-kit remote /path/to/module.so
 			<para>Set to <literal>yes</literal> to write a log to stderr of all the
 			calls into the module. This is only supported for managed modules.</para>
 
-			<para>This argument is optonal and defaults to <literal>no</literal>.</para>
+			<para>This argument is optional and defaults to <literal>no</literal>.</para>
 		</listitem>
 	</varlistentry>
 	</variablelist>
@@ -227,7 +220,7 @@ remote: |ssh user@remote p11-kit remote /path/to/module.so
 			problems if multiple callers in a single process share a PKCS#11
 			module.</para>
 
-			<para>This argument is optonal.</para>
+			<para>This argument is optional.</para>
 		</listitem>
 	</varlistentry>
 	<varlistentry>
@@ -250,7 +243,7 @@ remote: |ssh user@remote p11-kit remote /path/to/module.so
 <refsect1 id="config-locations">
 	<title>Configuration Files</title>
 
-	<para>Each configured PKCS#11 module is has its own config file. These
+	<para>Each configured PKCS#11 module has its own config file. These
 	files are placed in a directory. In addition a global config file exists.
 	There is a system configuration consisting of the various module config
 	files and a file for global configuration. Optionally each user can provide

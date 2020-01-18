@@ -110,8 +110,8 @@ load_usage_ext (p11_enumerate *ex,
 	node_asn *ext = NULL;
 	size_t length;
 
-	if (ex->stapled)
-		ext = p11_dict_get (ex->stapled, ext_oid);
+	if (ex->attached)
+		ext = p11_dict_get (ex->attached, ext_oid);
 	if (ext == NULL) {
 		*oids = NULL;
 		return true;
@@ -230,8 +230,8 @@ write_keyid (p11_enumerate *ex,
 	size_t length = 0;
 	int ret;
 
-	if (ex->stapled)
-		ext = p11_dict_get (ex->stapled, P11_OID_SUBJECT_KEY_IDENTIFIER);
+	if (ex->attached)
+		ext = p11_dict_get (ex->attached, P11_OID_SUBJECT_KEY_IDENTIFIER);
 	if (ext != NULL) {
 		value = p11_asn1_read (ext, "extnValue", &length);
 		return_val_if_fail (value != NULL, false);
@@ -587,6 +587,45 @@ symlink_for_subject_old_hash (p11_enumerate *ex)
 
 #endif /* OS_UNIX */
 
+/*
+ * The OpenSSL style c_rehash stuff
+ *
+ * Different versions of openssl build these hashes differently
+ * so output both of them. Shouldn't cause confusion, because
+ * multiple certificates can hash to the same link anyway,
+ * and this is the reason for the trailing number after the dot.
+ *
+ * The trailing number is incremented p11_save_symlink_in() if it
+ * conflicts with something we've already written out.
+ *
+ * On Windows no symlinks.
+ */
+bool
+p11_openssl_symlink (p11_enumerate *ex,
+                     p11_save_dir *dir,
+                     const char *filename)
+{
+	bool ret = true;
+#ifdef OS_UNIX
+	char *linkname;
+
+	linkname = symlink_for_subject_hash (ex);
+	if (linkname) {
+		ret = p11_save_symlink_in (dir, linkname, ".0", filename);
+		free (linkname);
+	}
+
+	if (ret) {
+		linkname = symlink_for_subject_old_hash (ex);
+		if (linkname) {
+			ret = p11_save_symlink_in (dir, linkname, ".0", filename);
+			free (linkname);
+		}
+	}
+#endif /* OS_UNIX */
+	return ret;
+}
+
 bool
 p11_extract_openssl_directory (p11_enumerate *ex,
                                const char *destination)
@@ -600,10 +639,6 @@ p11_extract_openssl_directory (p11_enumerate *ex,
 	char *path;
 	char *name;
 	CK_RV rv;
-
-#ifdef OS_UNIX
-	char *linkname;
-#endif
 
 	dir = p11_save_open_directory (destination, ex->flags);
 	if (dir == NULL)
@@ -637,38 +672,7 @@ p11_extract_openssl_directory (p11_enumerate *ex,
 				if (ret)
 					filename = p11_path_base (path);
 			}
-
-			/*
-			 * The OpenSSL style c_rehash stuff
-			 *
-			 * Different versions of openssl build these hashes differently
-			 * so output both of them. Shouldn't cause confusion, because
-			 * multiple certificates can hash to the same link anyway,
-			 * and this is the reason for the trailing number after the dot.
-			 *
-			 * The trailing number is incremented p11_save_symlink_in() if it
-			 * conflicts with something we've already written out.
-			 *
-			 * On Windows no symlinks.
-			 */
-
-#ifdef OS_UNIX
-			if (ret) {
-				linkname = symlink_for_subject_hash (ex);
-				if (linkname) {
-					ret = p11_save_symlink_in (dir, linkname, ".0", filename);
-					free (linkname);
-				}
-			}
-
-			if (ret) {
-				linkname = symlink_for_subject_old_hash (ex);
-				if (linkname) {
-					ret = p11_save_symlink_in (dir, linkname, ".0", filename);
-					free (linkname);
-				}
-			}
-#endif /* OS_UNIX */
+			ret = p11_openssl_symlink(ex, dir, filename);
 
 			free (filename);
 			free (path);

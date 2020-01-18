@@ -46,6 +46,7 @@
 #include "debug.h"
 #include "dict.h"
 #include "array.h"
+#include "library.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -192,6 +193,7 @@ module_reset_objects (CK_SLOT_ID slot_id)
 		the_objects = p11_dict_new (p11_dict_direct_hash,
 		                            p11_dict_direct_equal,
 		                            NULL, p11_attrs_free);
+		return_if_fail (the_objects != NULL);
 	}
 
 	p11_dict_clear (the_objects);
@@ -420,9 +422,12 @@ mock_C_Initialize (CK_VOID_PTR init_args)
 		/* We store CK_ULONG as pointers here, so verify that they fit */
 		assert (sizeof (CK_ULONG) <= sizeof (void *));
 
+		free (the_pin);
 		the_pin = (CK_UTF8CHAR_PTR)strdup ("booo");
 		n_the_pin = 4;
 
+		if (the_sessions)
+			p11_dict_free (the_sessions);
 		the_sessions = p11_dict_new (p11_dict_direct_hash,
 		                             p11_dict_direct_equal,
 		                             NULL, free_session);
@@ -455,6 +460,13 @@ CK_RV
 mock_C_Initialize__fails (CK_VOID_PTR init_args)
 {
 	return CKR_FUNCTION_FAILED;
+}
+
+CK_RV
+mock_X_Initialize__fails (CK_X_FUNCTION_LIST *self,
+                          CK_VOID_PTR init_args)
+{
+	return mock_C_Initialize__fails (init_args);
 }
 
 CK_RV
@@ -907,6 +919,7 @@ mock_C_OpenSession (CK_SLOT_ID slot_id,
 		return CKR_SESSION_PARALLEL_NOT_SUPPORTED;
 
 	sess = calloc (1, sizeof (Session));
+	return_val_if_fail (sess != NULL, CKR_HOST_MEMORY);
 	sess->handle = ++unique_identifier;
 	sess->info.flags = flags;
 	sess->info.slotID = slot_id;
@@ -2969,7 +2982,7 @@ mock_C_VerifyFinal (CK_SESSION_HANDLE session,
 	len = snprintf (buffer, sizeof (buffer), "%lu", sess->hash_count);
 	length = sess->n_sign_prefix + len;
 
-	if (!signature || signature_len != length)
+	if (signature_len != length)
 		return CKR_SIGNATURE_LEN_RANGE;
 
 	if (memcmp (signature, sess->sign_prefix, sess->n_sign_prefix) != 0 ||

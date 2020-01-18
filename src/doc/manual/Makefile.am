@@ -52,6 +52,7 @@ IGNORE_HFILES= \
 	conf.h \
 	debug.h \
 	dict.h \
+	filter.h \
 	log.h \
 	mock.h \
 	modules.h \
@@ -59,9 +60,13 @@ IGNORE_HFILES= \
 	pkcs11i.h \
 	pkcs11x.h \
 	private.h \
+	client.h \
 	proxy.h \
+	rpc.h \
+	rpc-message.h \
 	util.h \
 	virtual.h \
+	virtual-fixed.h \
 	array.h \
 	compat.h \
 	$(NULL)
@@ -101,18 +106,18 @@ expand_content_files= $(generate_files)
 GTKDOC_LIBS=
 
 # Hacks around gtk-doc brokenness for out of tree builds
-p11-kit-sections.txt: $(srcdir)/p11-kit-sections.txt
-	cp $(srcdir)/p11-kit-sections.txt p11-kit-sections.txt
-p11-kit-overrides.txt: $(srcdir)/p11-kit-overrides.txt
-	cp $(srcdir)/p11-kit-overrides.txt p11-kit-overrides.txt
+$(builddir)/p11-kit-sections.txt: $(srcdir)/p11-kit-sections.txt
+	cp $(srcdir)/p11-kit-sections.txt $(builddir)/p11-kit-sections.txt
+$(builddir)/p11-kit-overrides.txt: $(srcdir)/p11-kit-overrides.txt
+	cp $(srcdir)/p11-kit-overrides.txt $(builddir)/p11-kit-overrides.txt
 
 # Generate our files with variables
 sysdir.xml:
-	$(AM_V_GEN) echo -n $(p11_system_config) > "$@"
+	$(AM_V_GEN) echo -n '$(p11_system_config)' > "$@"
 userdir.xml:
-	$(AM_V_GEN) echo -n $(p11_user_config) > "$@"
+	$(AM_V_GEN) echo -n '$(p11_user_config)' > "$@"
 version.xml:
-	$(AM_V_GEN) echo -n $(VERSION) > "$@"
+	$(AM_V_GEN) echo -n '$(VERSION)' > "$@"
 
 # This includes the standard gtk-doc make rules, copied by gtkdocize.
 include $(top_srcdir)/build/gtk-doc.make
@@ -156,6 +161,7 @@ MAN_IN_FILES = \
 	$(NULL)
 
 CLEANFILES += \
+	$(generate_files) \
 	$(man1_MANS) \
 	$(man5_MANS) \
 	$(man8_MANS) \
@@ -163,7 +169,4 @@ CLEANFILES += \
 
 EXTRA_DIST += \
 	$(MAN_IN_FILES) \
-	sysdir.xml \
-	userdir.xml \
-	version.xml \
 	$(NULL)

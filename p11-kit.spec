@@ -1,5 +1,5 @@
 Name:           p11-kit
-Version:        0.20.7
+Version:        0.23.5
 Release:        3%{?dist}
 Summary:        Library for loading and sharing PKCS#11 modules
 
@@ -7,7 +7,10 @@ License:        BSD
 URL:            http://p11-glue.freedesktop.org/p11-kit.html
 Source0:        http://p11-glue.freedesktop.org/releases/p11-kit-%{version}.tar.gz
 Source1:        trust-extract-compat
-Patch1:         pthread-atfork-fix-deadlock.patch
+Patch0:		p11-kit-modifiable.patch
+Patch1:		p11-kit-strerror.patch
+Patch2:		p11-kit-oaep.patch
+Patch3:		p11-kit-doc.patch
 
 BuildRequires:  libtasn1-devel >= 2.3
 BuildRequires:  nss-softokn-freebl
@@ -57,8 +60,7 @@ contains certificate anchors and black lists.
 
 
 %prep
-%setup -q
-%patch1 -p1
+%autosetup -p1
 
 %build
 # These paths are the source paths that  come from the plan here:
@@ -71,9 +73,12 @@ make install DESTDIR=$RPM_BUILD_ROOT
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/pkcs11/modules
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 rm -f $RPM_BUILD_ROOT%{_libdir}/pkcs11/*.la
-install -p -m 755 %{SOURCE1} $RPM_BUILD_ROOT%{_libdir}/p11-kit/
+install -p -m 755 %{SOURCE1} $RPM_BUILD_ROOT%{_libexecdir}/p11-kit/
 # Install the example conf with %%doc instead
 rm $RPM_BUILD_ROOT%{_sysconfdir}/pkcs11/pkcs11.conf.example
+# We don't support PKCS#11 forwarding in RHEL-7 yet
+rm -f $RPM_BUILD_ROOT%{_libexecdir}/p11-kit/p11-kit-server
+rm -f $RPM_BUILD_ROOT%{_libdir}/pkcs11/p11-kit-client.so
 
 %check
 make check
@@ -112,10 +117,11 @@ fi
 %dir %{_sysconfdir}/pkcs11/modules
 %dir %{_datadir}/p11-kit
 %dir %{_datadir}/p11-kit/modules
-%dir %{_libdir}/p11-kit
+%dir %{_libexecdir}/p11-kit
 %{_bindir}/p11-kit
 %{_libdir}/libp11-kit.so.*
 %{_libdir}/p11-kit-proxy.so
+%{_libexecdir}/p11-kit/p11-kit-remote
 %{_mandir}/man8/p11-kit.8.gz
 %{_mandir}/man5/pkcs11.conf.5.gz
 
@@ -132,10 +138,24 @@ fi
 %{_mandir}/man1/trust.1.gz
 %{_libdir}/pkcs11/p11-kit-trust.so
 %{_datadir}/p11-kit/modules/p11-kit-trust.module
-%{_libdir}/p11-kit/trust-extract-compat
+%{_libexecdir}/p11-kit/trust-extract-compat
 
 
 %changelog
+* Mon Jun 12 2017 Daiki Ueno <dueno@redhat.com> - 0.23.5-3
+- Avoid reference to thread-unsafe strerror rhbz#1378947
+- Fix PKCS#11 OAEP interface rhbz#1191209
+- Update documentation to follow RFC7512 rhbz#1165977
+
+* Thu May 18 2017 Daiki Ueno <dueno@redhat.com> - 0.23.5-2
+- Make "trust anchor --remove" work again
+
+* Mon Mar  6 2017 Daiki Ueno <dueno@redhat.com> - 0.23.5-1
+- Rebase to upstream version 0.23.5
+
+* Wed Feb 22 2017 Daiki Ueno <dueno@redhat.com> - 0.23.4-1
+- Rebase to upstream version 0.23.4
+
 * Thu Jan 08 2015 Stef Walter <stefw@redhat.com> - 0.20.7-3
 - Fix incorrect alternative links for s390 and s390x rhbz#1174178
 
@@ -166,7 +186,7 @@ fi
 * Mon Nov 04 2013 Stef Walter <stefw@redhat.com> - 0.18.7-2
 - Move devel docs into subpackage due to gtk-doc multilib incompatibility (#983176)
 
-* Tue Oct 10 2013 Stef Walter <stefw@redhat.com> - 0.18.7-1
+* Thu Oct 10 2013 Stef Walter <stefw@redhat.com> - 0.18.7-1
 - Update to new upstream point release for RHEL bug fixes
 
 * Thu Jul 18 2013 Stef Walter <stefw@redhat.com> - 0.18.5-1

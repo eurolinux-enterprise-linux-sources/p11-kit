@@ -42,17 +42,18 @@
 #include "path.h"
 
 #include <assert.h>
+#include <dirent.h>
 #include <errno.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #ifdef OS_UNIX
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <unistd.h>
 #endif
 
 enum {
@@ -205,6 +206,22 @@ p11_fixture (void (* setup) (void *),
 	test_push (&item);
 }
 
+static int
+should_run_test (int argc,
+                 char **argv,
+                 test_item *item)
+{
+	int i;
+	if (argc == 0)
+		return 1;
+	for (i = 0; i < argc; i++) {
+		if (strcmp (argv[i], item->x.test.name) == 0)
+			return 1;
+	}
+
+	return 0;
+}
+
 int
 p11_test_run (int argc,
               char **argv)
@@ -215,16 +232,28 @@ p11_test_run (int argc,
 	int count;
 	int ret = 0;
 	int setup;
+	int opt;
 
 	/* p11-kit specific stuff */
 	putenv ("P11_KIT_STRICT=1");
 	p11_debug_init ();
 
+	while ((opt = getopt (argc, argv, "")) != -1) {
+		switch (opt) {
+		default:
+			fprintf (stderr, "specify only test names on the command line\n");
+			return 2;
+		}
+	}
+
+	argc -= optind;
+	argv += optind;
+
 	assert (gl.number == 0);
 	gl.last = NULL;
 
 	for (item = gl.suite, count = 0; item != NULL; item = item->next) {
-		if (item->type == TEST)
+		if (item->type == TEST && should_run_test (argc, argv, item))
 			count++;
 	}
 
@@ -242,6 +271,10 @@ p11_test_run (int argc,
 		}
 
 		assert (item->type == TEST);
+
+		if (!should_run_test (argc, argv, item))
+			continue;
+
 		gl.last = item;
 		gl.number++;
 		setup = 0;
@@ -289,7 +322,7 @@ expand_tempdir (const char *name)
 {
 	const char *env;
 
-	env = getenv ("TMPDIR");
+	env = secure_getenv ("TMPDIR");
 	if (env && env[0]) {
 		return p11_path_build (env, name, NULL);
 
@@ -339,6 +372,88 @@ p11_test_directory (const char *prefix)
 	return directory;
 }
 
+void
+p11_test_file_write (const char *base,
+                     const char *name,
+                     const void *contents,
+                     size_t length)
+{
+	char *path = NULL;
+	FILE *f;
+
+	if (base) {
+		if (asprintf (&path, "%s/%s", base, name) < 0)
+			assert_not_reached ();
+		name = path;
+	}
+
+	f = fopen (name, "wb");
+	if (f == NULL) {
+		printf ("# couldn't open file for writing: %s: %s\n", name, strerror (errno));
+		free (path);
+		assert_not_reached ();
+	}
+
+	if (fwrite (contents, 1, length, f) != length ||
+	    fclose (f) != 0) {
+		printf ("# couldn't write to file: %s: %s\n", name, strerror (errno));
+		free (path);
+		assert_not_reached ();
+	}
+
+	free (path);
+}
+
+void
+p11_test_file_delete (const char *base,
+                      const char *name)
+{
+	char *path = NULL;
+
+	if (base) {
+		if (asprintf (&path, "%s/%s", base, name) < 0)
+			assert_not_reached ();
+		name = path;
+	}
+
+	if (unlink (name) < 0) {
+		printf ("# Couldn't delete file: %s\n", name);
+		free (path);
+		assert_not_reached ();
+	}
+
+	free (path);
+}
+
+void
+p11_test_directory_delete (const char *directory)
+{
+	struct dirent *dp;
+	DIR *dir;
+
+	dir = opendir (directory);
+	if (dir == NULL) {
+		printf ("# Couldn't open directory: %s\n", directory);
+		assert_not_reached ();
+	}
+
+	while ((dp = readdir (dir)) != NULL) {
+		if (strcmp (dp->d_name, ".") == 0 ||
+		    strcmp (dp->d_name, "..") == 0)
+			continue;
+
+		p11_test_file_delete (directory, dp->d_name);
+	}
+
+	closedir (dir);
+
+	if (rmdir (directory) < 0) {
+		printf ("# Couldn't remove directory: %s\n", directory);
+		assert_not_reached ();
+	}
+}
+
+
 #ifdef OS_UNIX
 
 static void
@@ -386,7 +501,7 @@ p11_test_copy_setgid (const char *input)
 		return NULL;
 	}
 
-	path = strdup ("/tmp/test-setgid.XXXXXX");
+	path = strdup (BUILDDIR "/test-setgid.XXXXXX");
 	assert (path != NULL);
 
 	fd = mkstemp (path);
@@ -417,7 +532,7 @@ p11_test_run_child (const char **argv,
 	if (child == 0) {
 		if (quiet_out)
 			close (1); /* stdout */
-		execve (argv[0], (char **)argv, NULL);
+		execv (argv[0], (char **)argv);
 		assert_not_reached ();
 	}
 

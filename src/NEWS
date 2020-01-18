@@ -1,22 +1,80 @@
-0.20.7 (stable)
- * New public pkcs11x.h header containing extensions [#83495]
- * Export necessary defines to lookup attached extensions [#83495]
+0.23.5 (devel)
+ * Fix license notice of common/unix-peer.c [PR#58]
+ * Remove systemd unit files for now [PR#60]
+ * Build fixes for FreeBSD [PR#56]
+
+0.23.4 (devel)
+ * Recognize query attributes defined in PKCS#11 URI (RFC7512) [PR#31,
+   PR#37, PR#52]
+ * The trust policy module now recognizes CKA_NSS_MOZILLA_CA_POLICY
+   attribute, used by Firefox [#99453, PR#46]
+ * Add 'trust dump' command to dump all PKCS#11 objects in the
+   persistence format [PR#44]
+ * New experimental 'p11-kit server' command that allows PKCS#11
+   forwarding through a Unix domain socket.  A client-side module
+   p11-kit-client.so is also provided [PR#15]
+ * Add systemd unit files for exporting the proxy module through a
+   Unix domain socket [PR#35]
+ * New P11KitIter API to iterate over slots, tokens, and modules in
+   addition to objects [PR#28]
+ * libffi dependency is now optional [PR#9]
+ * Build fixes for FreeBSD, macOS, and Windows [PR#32, PR#39, PR#45]
+
+0.23.3 (devel)
+ * Install private executables in libexecdir [#98817]
+ * Fix link error of proxy module on macOS [#98022]
+ * Use new PKCS#11 URI specification for URIs [#97245]
+ * Support x-init-reserved argument of C_Initialize() in remote modules [#80519]
+ * Incorporate changes from PKCS#11 2.40 specification
+ * Bump libtool library version
+ * Documentation fixes
+ * Build fixes [#87192 ...]
+
+0.23.2 (devel)
+ * Fix forking issues with libffi [#90289 ...]
+ * Updated translations
+ * Build fixes [#90827 #89081 #92434 #92520 #92445 #92551 #92843 #92842 #92807 #93211 ...]
+
+0.23.1 (devel)
+ * Use new PKCS#11 URI draft fields for URIs [#86474 #87582]
+ * Add pem-directory-hash extract format
  * Build fixes
 
-0.20.6 (stable)
- * Make the p11-kit-proxy.so module respect critical = no [#83651]
- * Build fix for FreeBSD [#75674]
+0.22.1 (stable)
+ * Use SubjectKeyIdentifier for CKA_ID when available [#84761]
+ * Allow 'BEGIN PuBLIC KEY' PEM blocks in .p11-kit files
+ * Bump libtool library version
+ * Build fixes [#84665 ...]
 
-0.20.5 (stable)
+0.22.0 (stable)
+ * Remove the 'isolated = yes' option due to unclear semantics
+   replacement forth coming in later versions.
+ * Use secure_getenv() where necessary
+ * Run separate binary for 'p11-kit remote' command
+
+0.21.3 (unstable)
+ * New public pkcs11x.h header containing extensions [#83495]
+ * Export necessary defines to lookup attached extensions [#83495]
+ * Use term 'attached extensions' rather than 'stabled extensions'
+ * Make proxy module respect 'critical = no' [#83651]
+ * Show public-key-info in 'trust list --details'
+ * Build fixes [#75674 ...]
+
+0.21.2 (unstable)
  * Don't use invalid keys for looking up stapled extensions [#82328]
  * Better error messages when invalid certificate extensions
  * Fix parsing of some odd OpenSSL TRUSTED CERTIFICATE files
  * Fix some leaks, and memory issues
  * Silence some clang scanner warnings
+ * Fix build against older pthread implementations [#82617]
+ * Move to a non-recursive Makefile
+ * Can now specify which tests to run on command line
 
-0.20.4 (stable)
+0.21.1 (unstable)
+ * Add new 'isolate' pkcs11 config option [#80472]
+ * Add 'p11-kit remote' command for isolating modules [#54105]
  * Don't complain about C_Finalize after a fork
- * Fix typo
+ * Other minor fixes
 
 0.20.3 (stable)
  * Fix problems reinitializing managed modules after fork

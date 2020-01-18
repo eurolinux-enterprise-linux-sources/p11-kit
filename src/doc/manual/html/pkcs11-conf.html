@@ -2,22 +2,22 @@
 <html>
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-<title>pkcs11.conf</title>
-<meta name="generator" content="DocBook XSL Stylesheets V1.78.1">
+<title>pkcs11.conf: p11-kit</title>
+<meta name="generator" content="DocBook XSL Stylesheets V1.79.1">
 <link rel="home" href="index.html" title="p11-kit">
 <link rel="up" href="tools.html" title="Manual Pages">
 <link rel="prev" href="p11-kit.html" title="p11-kit">
 <link rel="next" href="trust.html" title="trust">
-<meta name="generator" content="GTK-Doc V1.19 (XML mode)">
+<meta name="generator" content="GTK-Doc V1.25 (XML mode)">
 <link rel="stylesheet" href="style.css" type="text/css">
 </head>
 <body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
-<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="2"><tr valign="middle">
-<td><a accesskey="p" href="p11-kit.html"><img src="left.png" width="24" height="24" border="0" alt="Prev"></a></td>
-<td><a accesskey="u" href="tools.html"><img src="up.png" width="24" height="24" border="0" alt="Up"></a></td>
-<td><a accesskey="h" href="index.html"><img src="home.png" width="24" height="24" border="0" alt="Home"></a></td>
-<th width="100%" align="center">p11-kit</th>
-<td><a accesskey="n" href="trust.html"><img src="right.png" width="24" height="24" border="0" alt="Next"></a></td>
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts"></td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="tools.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="p11-kit.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="trust.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
 </tr></table>
 <div class="refentry">
 <a name="pkcs11-conf"></a><div class="titlepage"></div>
@@ -26,7 +26,7 @@
 <h2><span class="refentrytitle">pkcs11.conf</span></h2>
 <p>pkcs11.conf — Configuration files for PKCS#11 modules</p>
 </td>
-<td valign="top" align="right"></td>
+<td class="gallery_image" valign="top" align="right"></td>
 </tr></table></div>
 <div class="refsect1">
 <a name="pkcs11-conf-description"></a><h2>Description</h2>
@@ -123,18 +123,12 @@ x-custom : text
 </td>
 </tr>
 <tr>
-<td><p><a name="option-isolated"></a><span class="term"><code class="option">isolated:</code></span></p></td>
-<td><p>Set to <code class="literal">yes</code> to run this PKCS#11 module in its own
-			process. This is a simple way to set the <code class="option">remote</code> to
-			accomplish the same thing.</p></td>
-</tr>
-<tr>
 <td><p><span class="term"><code class="option">managed:</code></span></p></td>
 <td>
 <p>Set to <code class="literal">no</code> if the module is not to be managed by
 			p11-kit. Making a module unmanaged is not recommended, and will cause
 			problems if multiple callers in a single process share a PKCS#11 module.</p>
-<p>This argument is optonal and defaults to <code class="literal">yes</code>.</p>
+<p>This argument is optional and defaults to <code class="literal">yes</code>.</p>
 </td>
 </tr>
 <tr>
@@ -142,7 +136,7 @@ x-custom : text
 <td>
 <p>The value should be an integer. When lists of modules are
 			returned to a caller of p11-kit, modules with a higher number are sorted
-			first. When applications search modules for for certificates, keys and
+			first. When applications search modules for certificates, keys and
 			trust policy information, this setting will affect what find
 			first.</p>
 <p>This argument is optional, and defaults to zero. Modules
@@ -151,7 +145,7 @@ x-custom : text
 </td>
 </tr>
 <tr>
-<td><p><span class="term"><code class="option">remote:</code></span></p></td>
+<td><p><a name="option-remote"></a><span class="term"><code class="option">remote:</code></span></p></td>
 <td>
 <p>Instead of loading the PKCS#11 module locally, run the module
 			remotely.</p>
@@ -161,6 +155,7 @@ x-custom : text
 <pre class="programlisting">
 remote: |ssh user@remote p11-kit remote /path/to/module.so
 </pre>
+<p>Other forms of remoting will appear in later p11-kit releases.</p>
 </td>
 </tr>
 <tr>
@@ -173,7 +168,7 @@ remote: |ssh user@remote p11-kit remote /path/to/module.so
 <td>
 <p>Set to <code class="literal">yes</code> to write a log to stderr of all the
 			calls into the module. This is only supported for managed modules.</p>
-<p>This argument is optonal and defaults to <code class="literal">no</code>.</p>
+<p>This argument is optional and defaults to <code class="literal">no</code>.</p>
 </td>
 </tr>
 </tbody>
@@ -212,7 +207,7 @@ remote: |ssh user@remote p11-kit remote /path/to/module.so
 			files. Making modules unmanaged is not recommended, and will cause
 			problems if multiple callers in a single process share a PKCS#11
 			module.</p>
-<p>This argument is optonal.</p>
+<p>This argument is optional.</p>
 </td>
 </tr>
 <tr>
@@ -232,18 +227,18 @@ remote: |ssh user@remote p11-kit remote /path/to/module.so
 </div>
 <div class="refsect1">
 <a name="config-locations"></a><h2>Configuration Files</h2>
-<p>Each configured PKCS#11 module is has its own config file. These
+<p>Each configured PKCS#11 module has its own config file. These
 	files are placed in a directory. In addition a global config file exists.
 	There is a system configuration consisting of the various module config
 	files and a file for global configuration. Optionally each user can provide
 	additional configuration or override the system configuration.</p>
 <p>The system global configuration file is usually in
 	<code class="literal">/etc/pkcs11/pkcs11.conf</code> and the user global
-	configuration file is in <code class="literal">/data/.config/pkcs11/pkcs11.conf</code> in the
+	configuration file is in <code class="literal">~/.config/pkcs11/pkcs11.conf</code> in the
 	user's home directory.</p>
 <p>The module config files are usually located in the
 	<code class="literal">/etc/pkcs11/modules</code> directory, with one configuration
-	file per module. In addition the <code class="literal">/data/.config/pkcs11/modules</code> directory
+	file per module. In addition the <code class="literal">~/.config/pkcs11/modules</code> directory
 	can be used for modules installed by the user.</p>
 <p>Note that user configuration files are not loaded from the home
 	directory if running inside a setuid or setgid program.</p>
@@ -260,7 +255,6 @@ remote: |ssh user@remote p11-kit remote /path/to/module.so
 </div>
 </div>
 <div class="footer">
-<hr>
-          Generated by GTK-Doc V1.19</div>
+<hr>Generated by GTK-Doc V1.25</div>
 </body>
 </html>

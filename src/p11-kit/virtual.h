@@ -56,8 +56,6 @@ void                    p11_virtual_init       (p11_virtual *virt,
 
 void                    p11_virtual_uninit     (p11_virtual *virt);
 
-bool                    p11_virtual_can_wrap   (void);
-
 CK_FUNCTION_LIST *      p11_virtual_wrap       (p11_virtual *virt,
                                                 p11_destroyer destroyer);
 

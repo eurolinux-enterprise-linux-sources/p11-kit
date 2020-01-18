@@ -38,14 +38,16 @@
 #include "compat.h"
 #include "debug.h"
 #include "extract.h"
-#include "iter.h"
 #include "message.h"
 #include "oid.h"
 #include "path.h"
-#include "pkcs11.h"
 #include "pkcs11x.h"
 #include "save.h"
 #include "tool.h"
+#include "digest.h"
+
+#include "p11-kit/iter.h"
+#include "p11-kit/pkcs11.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -55,6 +57,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static bool
 format_argument (const char *optarg,
@@ -76,6 +79,7 @@ format_argument (const char *optarg,
 		{ "x509-directory", p11_extract_x509_directory, },
 		{ "pem-bundle", p11_extract_pem_bundle, },
 		{ "pem-directory", p11_extract_pem_directory },
+		{ "pem-directory-hash", p11_extract_pem_directory_hash },
 		{ "java-cacerts", p11_extract_jks_cacerts },
 		{ "openssl-bundle", p11_extract_openssl_bundle },
 		{ "openssl-directory", p11_extract_openssl_directory },
@@ -144,6 +148,9 @@ validate_filter_and_format (p11_enumerate *ex,
 		 */
 
 		if (!ex->limit_to_purposes) {
+			p11_message ("format requires a purpose, specify it with --purpose; defaulting to 'server-auth'");
+			p11_enumerate_opt_purpose (ex, "server-auth");
+		} else if (p11_dict_size (ex->limit_to_purposes) > 1) {
 			p11_message ("format does not support multiple purposes, defaulting to 'server-auth'");
 			p11_enumerate_opt_purpose (ex, "server-auth");
 		}
@@ -188,7 +195,7 @@ p11_trust_extract (int argc,
 		{ 0, "usage: trust extract --format=<output> <destination>" },
 		{ opt_filter,
 		  "filter of what to export\n"
-		  "  ca-anchors        certificate anchors (default)\n"
+		  "  ca-anchors        certificate anchors\n"
 		  "  blacklist         blacklisted certificates\n"
 		  "  trust-policy      anchors and blacklist\n"
 		  "  certificates      all certificates\n"
@@ -197,13 +204,14 @@ p11_trust_extract (int argc,
 		},
 		{ opt_format,
 		  "format to extract to\n"
-		  "  x509-file         DER X.509 certificate file\n"
-		  "  x509-directory    directory of X.509 certificates\n"
-		  "  pem-bundle        file containing multiple PEM blocks\n"
-		  "  pem-directory     directory of PEM files\n"
-		  "  openssl-bundle    OpenSSL specific PEM bundle\n"
-		  "  openssl-directory directory of OpenSSL specific files\n"
-		  "  java-cacerts      java keystore cacerts file",
+		  "  x509-file           DER X.509 certificate file\n"
+		  "  x509-directory      directory of X.509 certificates\n"
+		  "  pem-bundle          file containing multiple PEM blocks\n"
+		  "  pem-directory       directory of PEM files\n"
+		  "  pem-directory-hash  directory of PEM files with hash links\n"
+		  "  openssl-bundle      OpenSSL specific PEM bundle\n"
+		  "  openssl-directory   directory of OpenSSL specific files\n"
+		  "  java-cacerts        java keystore cacerts file",
 		  "type"
 		},
 		{ opt_purpose,
@@ -278,6 +286,7 @@ p11_trust_extract (int argc,
 	if (!p11_enumerate_ready (&ex, "ca-anchors"))
 		exit (1);
 
+	ex.flags |= P11_ENUMERATE_CORRELATE;
 	ret = (format) (&ex, argv[0]) ? 0 : 1;
 
 	p11_enumerate_cleanup (&ex);

@@ -145,7 +145,7 @@ p11_save_write (p11_save_file *file,
 	while (written < length) {
 		res = write (file->fd, buf + written, length - written);
 		if (res <= 0) {
-			if (errno == EAGAIN && errno == EINTR)
+			if (errno == EAGAIN || errno == EINTR)
 				continue;
 			p11_message_err (errno, "couldn't write to file: %s", file->temp);
 			return false;
@@ -199,6 +199,8 @@ on_unique_try_rename (void *data,
 		return -1;
 	}
 
+	free (file->temp);
+	file->temp = strdup (path);
 	return 1; /* All done */
 }
 
@@ -233,7 +235,6 @@ p11_save_finish_file (p11_save_file *file,
 	/* Set the mode of the file, readable by everyone, but not writable */
 	} else if (chmod (file->temp, S_IRUSR | S_IRGRP | S_IROTH) < 0) {
 		p11_message_err (errno, "couldn't set file permissions: %s", file->temp);
-		close (file->fd);
 		ret = false;
 
 	/* Atomically rename the tempfile over the filename */
@@ -280,13 +281,14 @@ p11_save_finish_file (p11_save_file *file,
 			ret = false;
 		}
 
-		if (ret == true &&
-		    rename (file->temp, path) < 0) {
-			p11_message_err (errno, "couldn't complete writing file: %s", path);
-			ret = false;
-		}
+		if (ret == true && strcmp (file->temp, path) != 0) {
+			if (rename (file->temp, path) < 0) {
+				p11_message_err (errno, "couldn't complete writing file: %s", path);
+				ret = false;
+			}
 
-		unlink (file->temp);
+			unlink (file->temp);
+		}
 
 #endif /* OS_WIN32 */
 	}

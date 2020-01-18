@@ -40,14 +40,16 @@
 #include "array.h"
 #include "asn1.h"
 #include "dict.h"
-#include "iter.h"
-#include "pkcs11.h"
+
+#include "p11-kit/iter.h"
+#include "p11-kit/pkcs11.h"
 
 enum {
 	/* These overlap with the flags in save.h, so start higher */
 	P11_ENUMERATE_ANCHORS = 1 << 21,
 	P11_ENUMERATE_BLACKLIST = 1 << 22,
 	P11_ENUMERATE_COLLAPSE = 1 << 23,
+	P11_ENUMERATE_CORRELATE = 1 << 24,
 };
 
 typedef struct {
@@ -79,7 +81,7 @@ typedef struct {
 	size_t cert_len;
 
 	/* DER OID -> CK_ATTRIBUTE list */
-	p11_dict *stapled;
+	p11_dict *attached;
 
 	/* Set of OID purposes as strings */
 	p11_array *purposes;

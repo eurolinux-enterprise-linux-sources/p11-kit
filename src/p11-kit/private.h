@@ -38,6 +38,13 @@
 #include "compat.h"
 #include "pkcs11.h"
 
+/* These are global variables to be overridden in tests */
+extern const char *p11_config_system_file;
+extern const char *p11_config_user_file;
+extern const char *p11_config_package_modules;
+extern const char *p11_config_system_modules;
+extern const char *p11_config_user_modules;
+
 CK_RV       _p11_load_config_files_unlocked                     (const char *system_conf,
                                                                  const char *user_conf,
                                                                  int *user_mode);
@@ -50,6 +57,9 @@ void        _p11_set_progname_unlocked                          (const char *pro
 
 int          p11_match_uri_module_info                          (CK_INFO_PTR one,
                                                                  CK_INFO_PTR two);
+
+int          p11_match_uri_slot_info                            (CK_SLOT_INFO_PTR  one,
+                                                                 CK_SLOT_INFO_PTR  two);
 
 int          p11_match_uri_token_info                           (CK_TOKEN_INFO_PTR one,
                                                                  CK_TOKEN_INFO_PTR two);

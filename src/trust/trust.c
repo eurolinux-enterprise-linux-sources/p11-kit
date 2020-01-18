@@ -35,6 +35,7 @@
 #include "config.h"
 
 #include "anchor.h"
+#include "dump.h"
 #include "extract.h"
 #include "list.h"
 
@@ -58,6 +59,7 @@ static const p11_tool_command commands[] = {
 	{ "extract", p11_trust_extract, "Extract certificates and trust" },
 	{ "extract-compat", p11_trust_extract_compat, "Extract trust compatibility bundles" },
 	{ "anchor", p11_trust_anchor, "Add, remove, change trust anchors" },
+	{ "dump", p11_trust_dump, "Dump trust objects in internal format" },
 	{ 0, }
 };
 

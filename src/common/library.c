@@ -59,9 +59,13 @@ static p11_local * _p11_library_get_thread_local (void);
 
 p11_mutex_t p11_library_mutex;
 
+p11_mutex_t p11_virtual_mutex;
+
 #ifdef OS_UNIX
 pthread_once_t p11_library_once = PTHREAD_ONCE_INIT;
 #endif
+
+unsigned int p11_forkid = 1;
 
 static char *
 thread_local_message (void)
@@ -103,14 +107,24 @@ _p11_library_get_thread_local (void)
 	return local;
 }
 
+static void
+count_forks (void)
+{
+	/* Thread safe, executed in child, one thread exists */
+	p11_forkid++;
+}
+
 void
 p11_library_init_impl (void)
 {
 	p11_debug_init ();
 	p11_debug ("initializing library");
 	p11_mutex_init (&p11_library_mutex);
+	p11_mutex_init (&p11_virtual_mutex);
 	pthread_key_create (&thread_local, free);
 	p11_message_storage = thread_local_message;
+
+	pthread_atfork (NULL, NULL, count_forks);
 }
 
 void
@@ -130,6 +144,7 @@ p11_library_uninit (void)
 
 	p11_message_storage = dont_store_message;
 	pthread_key_delete (thread_local);
+	p11_mutex_uninit (&p11_virtual_mutex);
 	p11_mutex_uninit (&p11_library_mutex);
 }
 
@@ -164,6 +179,7 @@ p11_library_init (void)
 	p11_debug_init ();
 	p11_debug ("initializing library");
 	p11_mutex_init (&p11_library_mutex);
+	p11_mutex_init (&p11_virtual_mutex);
 	thread_local = TlsAlloc ();
 	if (thread_local == TLS_OUT_OF_INDEXES)
 		p11_debug ("couldn't setup tls");
@@ -195,6 +211,7 @@ p11_library_uninit (void)
 		LocalFree (data);
 		TlsFree (thread_local);
 	}
+	p11_mutex_uninit (&p11_virtual_mutex);
 	p11_mutex_uninit (&p11_library_mutex);
 }
 

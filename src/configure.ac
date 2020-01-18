@@ -1,7 +1,7 @@
 AC_PREREQ(2.61)
 
 AC_INIT([p11-kit],
-	[0.20.7],
+	[0.23.5],
 	[https://bugs.freedesktop.org/enter_bug.cgi?product=p11-glue],
 	[p11-kit],
 	[http://p11-glue.freedesktop.org/p11-kit.html])
@@ -13,23 +13,22 @@ AC_INIT([p11-kit],
 #   +1    :     0    :  0   == removed an interface. Breaks old apps.
 #    ?    :    +1    :  ?   == internal changes that doesn't break anything.
 
-P11KIT_CURRENT=0
+P11KIT_CURRENT=3
 P11KIT_REVISION=0
-P11KIT_AGE=0
+P11KIT_AGE=3
 
 # ------------------------------------------------------------------------------
 
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([build/m4])
 AC_CONFIG_AUX_DIR([build/litter])
-AM_INIT_AUTOMAKE([1.12 foreign serial-tests])
+AM_INIT_AUTOMAKE([1.12 foreign serial-tests subdir-objects])
 AM_SANITY_CHECK
 AM_MAINTAINER_MODE([enable])
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])],)
 
 LT_PREREQ([2.2.6])
 LT_INIT([dlopen disable-static])
-AM_GNU_GETTEXT([external], [need-ngettext])
 
 dnl Checks for programs.
 AC_PROG_CC
@@ -85,13 +84,14 @@ if test "$os_unix" = "yes"; then
 	])
 
 	# These are thngs we can work around
+	AC_CHECK_HEADERS([sys/resource.h])
+	AC_CHECK_MEMBERS([struct dirent.d_type],,,[#include <dirent.h>])
 	AC_CHECK_FUNCS([getprogname getexecname basename mkstemp mkdtemp])
-	AC_CHECK_FUNCS([getauxval issetugid getresuid])
+	AC_CHECK_FUNCS([getauxval issetugid getresuid secure_getenv])
 	AC_CHECK_FUNCS([strnstr memdup strndup strerror_r])
-	AC_CHECK_FUNCS([asprintf vasprintf vsnprintf])
-	AC_CHECK_FUNCS([timegm])
-
-	AC_CHECK_DECLS([asprintf, vasprintf], [], [], [[#include <stdio.h>]])
+	AC_CHECK_FUNCS([fdwalk])
+	AC_CHECK_FUNCS([setenv])
+	AC_CHECK_FUNCS([getpeereid])
 
 	# Required functions
 	AC_CHECK_FUNCS([gmtime_r],
@@ -112,7 +112,14 @@ if test "$os_unix" = "yes"; then
 		[AC_DEFINE(HAVE___PROGNAME, [1], [Whether __progname available])])
 	AC_LINK_IFELSE([AC_LANG_PROGRAM([[extern int __libc_enable_secure;]], [[__libc_enable_secure = 0;]])],
 		[AC_DEFINE(HAVE___LIBC_ENABLE_SECURE, [1], [Whether __libc_enable_secure available])])
+	AC_CHECK_TYPES([sighandler_t, sig_t, __sighandler_t], [], [],
+		[[#include <sys/types.h>
+		  #include <signal.h>]])
 fi
+
+# These are thngs we can work around
+AC_CHECK_FUNCS([asprintf vasprintf vsnprintf])
+AC_CHECK_DECLS([asprintf, vasprintf], [], [], [[#include <stdio.h>]])
 
 AC_CHECK_LIB(intl, dgettext)
 
@@ -190,17 +197,6 @@ if test "$with_libffi" != "no"; then
 	AC_DEFINE_UNQUOTED(WITH_FFI, 1, [Use libffi for building closures])
 	AC_SUBST(LIBFFI_CFLAGS)
 	AC_SUBST(LIBFFI_LIBS)
-
-	SAVE_CFLAGS="$CFLAGS"
-	CFLAGS="$CFLAGS $LIBFFI_CFLAGS"
-	AC_COMPILE_IFELSE([AC_LANG_PROGRAM([#include <ffi.h>],
-	                  [ #if FFI_CLOSURES
-	                    #else
-	                    #error no closures
-	                    #endif
-	                  ])],
-	[], [AC_MSG_ERROR([the libffi on this system has no support for closures.])])
-	CFLAGS="$SAVE_CFLAGS"
 
 	with_libffi="yes"
 fi
@@ -496,23 +492,19 @@ esac
 AC_DEFINE_UNQUOTED(SHLEXT, ["$SHLEXT"], [File extension for shared libraries])
 AC_SUBST(SHLEXT)
 
-privatedir='${libdir}/p11-kit'
+AC_DEFINE_UNQUOTED(EXEEXT, ["$EXEEXT"], [File extension for executables])
+
+privatedir='${libexecdir}/p11-kit'
 AC_SUBST(privatedir)
 
 AC_CONFIG_FILES([Makefile
-	common/Makefile
-	common/tests/Makefile
 	doc/Makefile
 	doc/manual/Makefile
 	po/Makefile.in
-	p11-kit/Makefile
-	p11-kit/tests/Makefile
 	p11-kit/p11-kit-1.pc
 	p11-kit/pkcs11.conf.example
-	trust/Makefile
 	trust/trust-extract-compat
-	trust/tests/Makefile
-	trust/tests/test-extract
+	trust/test-extract
 ])
 AC_OUTPUT
 

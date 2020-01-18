@@ -1,0 +1,25 @@
+From 14c50e25d8280ce81a323ef79a71a66892b65f1a Mon Sep 17 00:00:00 2001
+From: Daiki Ueno <dueno@redhat.com>
+Date: Mon, 12 Jun 2017 15:38:21 +0200
+Subject: [PATCH] doc: Use correct PKCS#11 URI syntax
+
+---
+ doc/manual/trust.xml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/doc/manual/trust.xml b/doc/manual/trust.xml
+index f6f2b3e..14dcbba 100644
+--- a/doc/manual/trust.xml
++++ b/doc/manual/trust.xml
+@@ -157,7 +157,7 @@ $ trust list
+ <programlisting>
+ $ trust anchor /path/to/certificate.crt
+ $ trust anchor --remove /path/to/certificate.crt
+-$ trust anchor --remove "pkcs11:id=%AA%BB%CC%DD%EE;object-type=cert"
++$ trust anchor --remove "pkcs11:id=%AA%BB%CC%DD%EE;type=cert"
+ </programlisting>
+ 
+ 	<para>Store or remove trust anchors in the trust policy store. These are
+-- 
+2.9.4
+

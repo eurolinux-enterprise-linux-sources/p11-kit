@@ -36,6 +36,7 @@
 
 #include "config.h"
 
+#include "compat.h"
 #include "debug.h"
 
 #include <assert.h>
@@ -57,6 +58,7 @@ static struct DebugKey debug_keys[] = {
 	{ "proxy", P11_DEBUG_PROXY },
 	{ "trust", P11_DEBUG_TRUST },
 	{ "tool", P11_DEBUG_TOOL },
+	{ "rpc", P11_DEBUG_RPC },
 	{ 0, }
 };
 
@@ -75,7 +77,7 @@ parse_environ_flags (void)
 	const char *q;
 	int i;
 
-	env = getenv ("P11_KIT_STRICT");
+	env = secure_getenv ("P11_KIT_STRICT");
 	if (env && env[0] != '\0')
 		debug_strict = true;
 

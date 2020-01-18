@@ -66,7 +66,7 @@ p11_argv_parse (const char *string,
 		/* Inside of quotes */
 		} else if (quote != '\0') {
 			if (*src == '\\') {
-				*at++ = *src++;
+				src++;
 				if (!*src) {
 					ret = false;
 					goto done;

@@ -41,11 +41,13 @@
 #include "debug.h"
 #include "constants.h"
 #include "extract.h"
-#include "iter.h"
 #include "message.h"
 #include "parser.h"
-#include "p11-kit.h"
 #include "tool.h"
+#include "pkcs11x.h"
+
+#include "p11-kit/iter.h"
+#include "p11-kit/p11-kit.h"
 
 #include <assert.h>
 #include <getopt.h>
@@ -329,12 +331,35 @@ create_anchor (CK_FUNCTION_LIST *module,
 	CK_OBJECT_HANDLE object;
 	char *string;
 	CK_RV rv;
+	CK_ULONG klass;
 
-	CK_ATTRIBUTE basics[] = {
+	CK_ATTRIBUTE basics_certificate[] = {
 		{ CKA_TOKEN, &truev, sizeof (truev) },
 		{ CKA_TRUSTED, &truev, sizeof (truev) },
 		{ CKA_INVALID, },
 	};
+
+	CK_ATTRIBUTE basics_extension[] = {
+		{ CKA_TOKEN, &truev, sizeof (truev) },
+		{ CKA_INVALID, },
+	};
+
+	CK_ATTRIBUTE basics_empty[] = {
+		{ CKA_INVALID, },
+	};
+
+	CK_ATTRIBUTE *basics = basics_empty;
+
+	if (p11_attrs_find_ulong (attrs, CKA_CLASS, &klass)) {
+		switch (klass) {
+		case CKO_CERTIFICATE:
+			basics = basics_certificate;
+			break;
+		case CKO_X_CERTIFICATE_EXTENSION:
+			basics = basics_extension;
+			break;
+		}
+	}
 
 	attrs = p11_attrs_merge (attrs, p11_attrs_dup (basics), true);
 	p11_attrs_remove (attrs, CKA_MODIFIABLE);
@@ -367,13 +392,20 @@ modify_anchor (CK_FUNCTION_LIST *module,
 	CK_BBOOL truev = CK_TRUE;
 	CK_ATTRIBUTE *changes;
 	CK_ATTRIBUTE *label;
+	CK_ULONG klass;
 	char *string;
 	CK_RV rv;
 
 	CK_ATTRIBUTE trusted = { CKA_TRUSTED, &truev, sizeof (truev) };
 
 	label = p11_attrs_find_valid (attrs, CKA_LABEL);
-	changes = p11_attrs_build (NULL, &trusted, label, NULL);
+
+	if (p11_attrs_find_ulong (attrs, CKA_CLASS, &klass) &&
+	    klass == CKO_CERTIFICATE)
+		changes = p11_attrs_build (NULL, &trusted, label, NULL);
+	else
+		changes = p11_attrs_build (NULL, label, NULL);
+
 	return_val_if_fail (attrs != NULL, FALSE);
 
 	/* Don't need the attributes anymore */
@@ -580,7 +612,7 @@ p11_trust_anchor (int argc,
 	bool changed = false;
 	int action = 0;
 	int opt;
-	int ret;
+	int ret = 0;
 
 	enum {
 		opt_verbose = 'v',
@@ -601,7 +633,8 @@ p11_trust_anchor (int argc,
 	};
 
 	p11_tool_desc usages[] = {
-		{ 0, "usage: trust anchor --store <file> ..." },
+		{ 0, "usage: trust anchor --store <file> ...\n"
+		     "       trust anchor --remove <file or URI> ..."},
 		{ opt_verbose, "show verbose debug output", },
 		{ opt_quiet, "suppress command output", },
 		{ 0 },

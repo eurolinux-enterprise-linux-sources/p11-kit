@@ -34,9 +34,21 @@
 
 #include "config.h"
 
+/*
+ * This is needed to expose pthread_mutexattr_settype and PTHREAD_MUTEX_DEFAULT
+ * on older pthreads implementations
+ */
+#define _XOPEN_SOURCE 700
+
+#if defined(HAVE_ISSETUGID) && defined(__FreeBSD__)
+#define __BSD_VISIBLE 1
+#endif
+
 #include "compat.h"
+#include "debug.h"
 
 #include <assert.h>
+#include <dirent.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,6 +92,8 @@
 #ifndef HAVE_GETPROGNAME
 
 #ifdef OS_UNIX
+
+#include <unistd.h>
 
 #if defined (HAVE_PROGRAM_INVOCATION_SHORT_NAME) && !HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME
 extern char *program_invocation_short_name;
@@ -161,7 +175,7 @@ p11_mutex_init (p11_mutex_t *mutex)
 	int ret;
 
 	pthread_mutexattr_init (&attr);
-	pthread_mutexattr_settype (&attr, PTHREAD_MUTEX_DEFAULT);
+	pthread_mutexattr_settype (&attr, PTHREAD_MUTEX_RECURSIVE);
 	ret = pthread_mutex_init (mutex, &attr);
 	assert (ret == 0);
 	pthread_mutexattr_destroy (&attr);
@@ -494,8 +508,11 @@ strconcat (const char *first,
 
 	va_start (va, first);
 
-	for (arg = first; arg; arg = va_arg (va, const char*))
-	       length += strlen (arg);
+	for (arg = first; arg; arg = va_arg (va, const char*)) {
+		size_t old_length = length;
+		length += strlen (arg);
+		return_val_if_fail (length >= old_length, NULL);
+	}
 
 	va_end (va);
 
@@ -613,37 +630,6 @@ gmtime_r (const time_t *timep,
 
 #endif /* HAVE_GMTIME_R */
 
-#ifndef HAVE_TIMEGM
-
-time_t
-timegm (struct tm *tm)
-{
-	time_t tl, tb;
-	struct tm tg;
-
-	tl = mktime (tm);
-	if (tl == -1) {
-		tm->tm_hour--;
-		tl = mktime (tm);
-		if (tl == -1)
-			return -1;
-		tl += 3600;
-	}
-	gmtime_r (&tl, &tg);
-	tg.tm_isdst = 0;
-	tb = mktime (&tg);
-	if (tb == -1) {
-		tg.tm_hour--;
-		tb = mktime (&tg);
-		if (tb == -1)
-			return -1;
-		tb += 3600;
-	}
-	return (tl - (tb - tl));
-}
-
-#endif /* HAVE_TIMEGM */
-
 #if !defined(HAVE_MKDTEMP) || !defined(HAVE_MKSTEMP)
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -686,7 +672,7 @@ _gettemp (char *path,
 
 	/* Fill space with random characters */
 	while (trv >= path && *trv == 'X') {
-		rnd = rand () % sizeof (padchar) - 1;
+		rnd = rand () % (sizeof (padchar) - 1);
 		*trv-- = padchar[rnd];
 	}
 	start = trv + 1;
@@ -836,6 +822,14 @@ getauxval (unsigned long type)
 
 #endif /* HAVE_GETAUXVAL */
 
+char *
+secure_getenv (const char *name)
+{
+	if (getauxval (AT_SECURE))
+		return NULL;
+	return getenv (name);
+}
+
 #ifndef HAVE_STRERROR_R
 
 int
@@ -866,3 +860,73 @@ strerror_r (int errnum,
 }
 
 #endif /* HAVE_STRERROR_R */
+
+#ifdef OS_UNIX
+
+#include <unistd.h>
+
+#ifndef HAVE_FDWALK
+
+#ifdef HAVE_SYS_RESOURCE_H
+#include <sys/resource.h>
+#endif
+
+int
+fdwalk (int (* cb) (void *data, int fd),
+        void *data)
+{
+	struct dirent *de;
+	char *end;
+	DIR *dir;
+	int open_max;
+	long num;
+	int res = 0;
+	int fd;
+
+#ifdef HAVE_SYS_RESOURCE_H
+	struct rlimit rl;
+#endif
+
+	dir = opendir ("/proc/self/fd");
+	if (dir != NULL) {
+		while ((de = readdir (dir)) != NULL) {
+			end = NULL;
+			num = (int) strtol (de->d_name, &end, 10);
+
+			/* didn't parse or is the opendir() fd */
+			if (!end || *end != '\0' ||
+			    (int)num == dirfd (dir))
+				continue;
+
+			fd = num;
+
+			/* call the callback */
+			res = cb (data, fd);
+			if (res != 0)
+				break;
+		}
+
+		closedir (dir);
+		return res;
+	}
+
+	/* No /proc, brute force */
+#ifdef HAVE_SYS_RESOURCE_H
+	if (getrlimit (RLIMIT_NOFILE, &rl) == 0 && rl.rlim_max != RLIM_INFINITY)
+		open_max = rl.rlim_max;
+	else
+#endif
+		open_max = sysconf (_SC_OPEN_MAX);
+
+	for (fd = 0; fd < open_max; fd++) {
+		res = cb (data, fd);
+		if (res != 0)
+			break;
+	}
+
+	return res;
+}
+
+#endif /* HAVE_FDWALK */
+
+#endif /* OS_UNIX */
